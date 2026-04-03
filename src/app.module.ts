@@ -7,6 +7,7 @@ import { ProfileModule } from './profile/profile.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { ChatsModule } from './chats/chats.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
       }),
     }),
     CloudinaryModule,
+    ChatsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -54,9 +54,7 @@ export class ProfileService {
 
       const userProfile = this.profileRepository.create({
         ...createProfileDto,
-        uniqueName: createProfileDto.userName
-          .toLowerCase()
-          .replace(/\s+/g, '-'), // Generate uniqueName from userName
+        username: createProfileDto.userName.toLowerCase().replace(/\s+/g, '-'), // Generate uniqueName from userName
         user: user, // Associate the profile with the user
       });
       await this.profileRepository.save(userProfile);
@@ -78,5 +76,16 @@ export class ProfileService {
       throw new NotFoundException('Profile not found');
     }
     return profile;
+  }
+
+  async findUserByName(username: string) {
+    const profile = await this.profileRepository.findOne({
+      where: { username },
+      relations: ['user'],
+    });
+    if (!profile) {
+      return { userExists: false };
+    }
+    return { userExists: true, profile: profile };
   }
 }

@@ -10,5 +10,6 @@ import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
   controllers: [ProfileController],
   providers: [ProfileService],
   imports: [UserModule, TypeOrmModule.forFeature([Profile]), CloudinaryModule],
+  exports: [ProfileService],
 })
 export class ProfileModule {}

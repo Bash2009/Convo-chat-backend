@@ -18,8 +18,8 @@ export class Profile {
   @Column()
   lastName: string;
 
-  @Column()
-  uniqueName: string;
+  @Column({ unique: true })
+  username: string;
 
   @Column({ nullable: true })
   bio: string;

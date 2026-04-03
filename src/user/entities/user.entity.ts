@@ -5,8 +5,10 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToOne,
+  ManyToMany,
 } from 'typeorm';
 import { Profile } from '../../profile/entities/profile.entity';
+import { ChatMember } from 'src/chats/entities/chat-members.entity';
 
 @Entity('users')
 export class User {
@@ -18,6 +20,9 @@ export class User {
 
   @OneToOne(() => Profile, (profile) => profile.user)
   profile: Profile;
+
+  @ManyToMany(() => ChatMember, (chatMember) => chatMember.user)
+  chatMembers: ChatMember[];
 
   @CreateDateColumn({
     type: 'timestamp with time zone',
