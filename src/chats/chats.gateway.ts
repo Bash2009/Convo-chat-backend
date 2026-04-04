@@ -9,6 +9,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { ChatsService } from './chats.service';
+import { CreateChatDto } from './dto/create-chat.dto';
 
 @WebSocketGateway({
   cors: {
@@ -40,7 +41,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('createChat')
-  create(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
+  create(@MessageBody() data: CreateChatDto, @ConnectedSocket() client: Socket) {
     const newChat = this.chatsService.create(data); // call your service to create a new chat
     this.server.emit('newChat', newChat); // broadcast the new chat to all clients
   }

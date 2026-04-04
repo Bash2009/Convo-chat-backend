@@ -6,6 +6,7 @@ import {
   ManyToMany,
   OneToOne,
   JoinColumn,
+  OneToMany,
 } from 'typeorm';
 import { ChatMember } from './chat-members.entity';
 import { Message } from './messages.entity';
@@ -21,7 +22,10 @@ export class Chat {
   @Column({ nullable: true })
   name: string; // group name
 
-  @ManyToMany(() => ChatMember, (chatMember) => chatMember.chat)
+  @OneToMany(() => ChatMember, (chatMember) => chatMember.chat, {
+    cascade: ['insert', 'update'],
+    eager: false,
+  })
   members: ChatMember[];
 
   @OneToOne(() => Message, (message) => message.chat)
