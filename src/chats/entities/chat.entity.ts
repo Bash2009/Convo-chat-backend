@@ -3,9 +3,6 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  ManyToMany,
-  OneToOne,
-  JoinColumn,
   OneToMany,
 } from 'typeorm';
 import { ChatMember } from './chat-members.entity';
@@ -20,7 +17,10 @@ export class Chat {
   isGroup: boolean;
 
   @Column({ nullable: true })
-  name: string; // group name
+  name: string;
+
+  @Column({ nullable: true })
+  avatarUrl: string;
 
   @OneToMany(() => ChatMember, (chatMember) => chatMember.chat, {
     cascade: ['insert', 'update'],
@@ -28,9 +28,12 @@ export class Chat {
   })
   members: ChatMember[];
 
-  @OneToOne(() => Message, (message) => message.chat)
-  @JoinColumn()
-  lastMessage: Message;
+  @OneToMany(() => Message, (message) => message.chat, { eager: false })
+  messages: Message[];
+
+  // Denormalised preview fields updated on each new message for fast list queries
+  @Column({ nullable: true })
+  lastMessageText: string;
 
   @Column({ type: 'timestamp', nullable: true })
   lastMessageAt: Date;

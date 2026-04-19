@@ -11,6 +11,9 @@ import { ProfileModule } from 'src/profile/profile.module';
 @Module({
   providers: [ChatsGateway, ChatsService],
   controllers: [ChatsController],
-  imports:[TypeOrmModule.forFeature([ChatMember, Chat, Message]), ProfileModule]
+  imports: [
+    TypeOrmModule.forFeature([ChatMember, Chat, Message]),
+    ProfileModule,
+  ],
 })
 export class ChatsModule {}

@@ -3,17 +3,24 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  OneToOne,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { Chat } from './chat.entity';
+
+export type MessageStatus = 'sent' | 'delivered' | 'read';
 
 @Entity()
 export class Message {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @OneToOne(() => Chat, (chat) => chat.lastMessage)
-  chat: string;
+  @ManyToOne(() => Chat, (chat) => chat.messages, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'chatId' })
+  chat: Chat;
+
+  @Column()
+  chatId: string;
 
   @Column()
   senderId: string;
@@ -22,7 +29,10 @@ export class Message {
   content: string;
 
   @Column({ default: 'text' })
-  type: string; // text, image, video, etc.
+  type: string;
+
+  @Column({ default: 'sent' })
+  status: MessageStatus;
 
   @Column({ default: false })
   isEdited: boolean;
