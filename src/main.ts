@@ -6,7 +6,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: [process.env.FRONTEND_URL || 'http://localhost:5173'],
+    origin: [
+      'http://localhost:5173',
+      'https://social-media-frontend-blush.vercel.app',
+      'https://social-media-frontend-bashirs-projects-4584c438.vercel.app/',
+    ],
     methods: 'GET, HEAD, PUT, PATCH, POST, DELETE',
     credentials: true,
   });
@@ -14,7 +18,9 @@ async function bootstrap() {
   app.use((req, res, next) => {
     if (req.method === 'OPTIONS') {
       res.setHeader('Access-Control-Allow-Origin', [
-        process.env.FRONTEND_URL || 'http://localhost:5173',
+        'http://localhost:5173',
+        'https://social-media-frontend-blush.vercel.app',
+        'https://social-media-frontend-bashirs-projects-4584c438.vercel.app',
       ]);
 
       res.setHeader(
