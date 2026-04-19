@@ -5,7 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToOne,
-  ManyToMany,
+  OneToMany,
 } from 'typeorm';
 import { Profile } from '../../profile/entities/profile.entity';
 import { ChatMember } from 'src/chats/entities/chat-members.entity';
@@ -21,7 +21,8 @@ export class User {
   @OneToOne(() => Profile, (profile) => profile.user)
   profile: Profile;
 
-  @ManyToMany(() => ChatMember, (chatMember) => chatMember.user)
+  // A user can be a member of many chats
+  @OneToMany(() => ChatMember, (chatMember) => chatMember.user)
   chatMembers: ChatMember[];
 
   @CreateDateColumn({

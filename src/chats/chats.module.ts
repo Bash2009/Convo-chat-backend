@@ -7,6 +7,8 @@ import { ChatMember } from './entities/chat-members.entity';
 import { Chat } from './entities/chat.entity';
 import { Message } from './entities/messages.entity';
 import { ProfileModule } from 'src/profile/profile.module';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   providers: [ChatsGateway, ChatsService],
@@ -14,6 +16,15 @@ import { ProfileModule } from 'src/profile/profile.module';
   imports: [
     TypeOrmModule.forFeature([ChatMember, Chat, Message]),
     ProfileModule,
+    // Gateway needs JwtService to verify socket handshake tokens
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: '15m' },
+      }),
+    }),
   ],
 })
 export class ChatsModule {}

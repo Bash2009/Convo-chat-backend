@@ -17,44 +17,52 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
-  // Returns an access and refresh jwt in that order
-  private async getTokens(uid) {
-    return [
-      await this.jwtService.signAsync(
+  // Returns [access_token, refresh_token]
+  private async getTokens(uid: string) {
+    const [access_token, refresh_token] = await Promise.all([
+      this.jwtService.signAsync(
         { sub: uid },
-        { secret: this.configService.get<string>('JWT_SECRET') },
+        {
+          secret: this.configService.get<string>('JWT_SECRET'),
+          expiresIn: '15m',
+        },
       ),
-      await this.jwtService.signAsync(
+      this.jwtService.signAsync(
         { sub: uid },
-        { secret: this.configService.get<string>('JWT_REFRESH_SECRET') },
+        {
+          secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+          expiresIn: '7d',
+        },
       ),
-    ];
+    ]);
+    return { access_token, refresh_token };
   }
 
   async register(createUserDto: CreateUserDto) {
     try {
       const user = await this.userService.create(createUserDto);
-      const [access_token, refresh_token] = await this.getTokens(user.uid);
-
-      return { ...user, access_token, refresh_token };
+      const tokens = await this.getTokens(user.uid);
+      return { ...user, ...tokens };
     } catch (error) {
-      console.log(error);
+      console.error(error);
       throw new InternalServerErrorException(`${error}`);
     }
   }
 
   async login(loginDto: LoginDto) {
     const user = await this.userService.findOneById(loginDto.uid);
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-    const [access_token, refresh_token] = await this.getTokens(user.uid);
-
-    return { ...user, access_token, refresh_token };
+    if (!user) throw new BadRequestException('User not found');
+    const tokens = await this.getTokens(user.uid);
+    return { ...user, ...tokens };
   }
 
   async refreshToken(uid: string) {
-    const [access_token, refresh_token] = await this.getTokens(uid);
-    return { access_token, refresh_token };
+    return this.getTokens(uid);
+  }
+
+  /** Stateless logout — tokens are short-lived so no server-side blacklist needed.
+   *  The client discards both tokens; this endpoint exists for a clean API surface. */
+  async logout() {
+    return { message: 'Logged out successfully' };
   }
 }
