@@ -12,6 +12,7 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ChatsService } from './chats.service';
+import { AddMembersDto } from './dto/add-members.dto';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { validateOrReject } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
@@ -175,6 +176,10 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     try {
       const uid = this.verifyClient(client);
+
+      const dto = plainToInstance(AddMembersDto, data);
+      await validateOrReject(dto);
+
       const chat = await this.chatsService.addMembers(data.chatId, data.members, uid);
       this.server.emit('memberAdded', chat);
     } catch (err) {

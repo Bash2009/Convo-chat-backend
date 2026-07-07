@@ -90,8 +90,9 @@ export class ChatsService {
     });
     if (!chat) throw new NotFoundException('Chat not found');
 
-    const isMember = chat.members.some((m) => m.user?.uid === requesterUid);
-    if (!isMember) throw new ForbiddenException('Not a member of this chat');
+    const requesterMember = chat.members.find((m) => m.user?.uid === requesterUid);
+    if (!requesterMember) throw new ForbiddenException('Not a member of this chat');
+    if (chat.isGroup && requesterMember.role !== 'admin') throw new ForbiddenException('Only admins can delete a group chat');
 
     await this.chatRepository.remove(chat);
     return { id: chatId, deleted: true };

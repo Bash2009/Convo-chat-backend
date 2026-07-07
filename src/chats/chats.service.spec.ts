@@ -125,14 +125,30 @@ describe('ChatsService', () => {
   // ── delete ──────────────────────────────────────────────────────────────────
 
   describe('delete', () => {
-    it('deletes chat when requester is a member', async () => {
-      const chat = { ...mockChat, members: [{ user: { uid: 'uid1' } }] } as any;
+    it('deletes private chat when requester is a member', async () => {
+      const chat = { ...mockChat, isGroup: false, members: [{ user: { uid: 'uid1' }, role: 'member' }] } as any;
       chatRepository.findOne.mockResolvedValue(chat);
 
       const result = await service.delete('chat-id', 'uid1');
 
       expect(result).toEqual({ id: 'chat-id', deleted: true });
       expect(chatRepository.remove).toHaveBeenCalledWith(chat);
+    });
+
+    it('deletes group chat when requester is an admin', async () => {
+      const chat = { ...mockChat, isGroup: true, members: [{ user: { uid: 'uid1' }, role: 'admin' }] } as any;
+      chatRepository.findOne.mockResolvedValue(chat);
+
+      const result = await service.delete('chat-id', 'uid1');
+
+      expect(result.deleted).toBe(true);
+    });
+
+    it('throws ForbiddenException when a regular member tries to delete a group', async () => {
+      const chat = { ...mockChat, isGroup: true, members: [{ user: { uid: 'uid1' }, role: 'member' }] } as any;
+      chatRepository.findOne.mockResolvedValue(chat);
+
+      await expect(service.delete('chat-id', 'uid1')).rejects.toThrow(ForbiddenException);
     });
 
     it('throws NotFoundException when chat not found', async () => {
@@ -142,7 +158,7 @@ describe('ChatsService', () => {
     });
 
     it('throws ForbiddenException when not a member', async () => {
-      const chat = { ...mockChat, members: [{ user: { uid: 'uid2' } }] } as any;
+      const chat = { ...mockChat, isGroup: false, members: [{ user: { uid: 'uid2' }, role: 'admin' }] } as any;
       chatRepository.findOne.mockResolvedValue(chat);
 
       await expect(service.delete('chat-id', 'uid1')).rejects.toThrow(ForbiddenException);

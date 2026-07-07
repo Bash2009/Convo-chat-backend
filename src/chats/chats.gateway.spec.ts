@@ -231,6 +231,16 @@ describe('ChatsGateway', () => {
 
       expect(client.emit).toHaveBeenCalledWith('error', expect.objectContaining({ event: 'addMember' }));
     });
+
+    it('emits error when members is missing', async () => {
+      jwtService.verify.mockReturnValue({ sub: 'uid1' });
+      const client = mockClient();
+
+      await gateway.addMember({ chatId: 'c1' } as any, client);
+
+      expect(client.emit).toHaveBeenCalledWith('error', expect.objectContaining({ event: 'addMember' }));
+      expect(chatsService.addMembers).not.toHaveBeenCalled();
+    });
   });
 
   // ── joinChat ────────────────────────────────────────────────────────────────
