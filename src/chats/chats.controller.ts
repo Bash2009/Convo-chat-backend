@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Post } from '@nestjs/common';
 import { ChatsService } from './chats.service';
 import { CreateChatDto } from './dto/create-chat.dto';
 
 @Controller()
 export class ChatsController {
   constructor(private chatService: ChatsService) {}
-  @Post('create')                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+  @Post('create')
   create(@Body() createChatDto: CreateChatDto) {
     return this.chatService.create(createChatDto);
   }
