@@ -25,10 +25,6 @@ export class CreateProfileDto {
   @IsNotEmpty()
   location: string;
 
-  @IsString()
-  @IsNotEmpty()
-  website: string;
-
   @IsOptional()
   @IsString()
   @IsUrl()

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -9,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { Profile } from './entities/profile.entity';
 import { CreateProfileDto } from './dto/create-profile.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserService } from 'src/user/user.service';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
@@ -83,6 +85,28 @@ export class ProfileService {
       throw new NotFoundException('Profile not found');
     }
     return profile;
+  }
+
+  async update(
+    uid: string,
+    dto: UpdateProfileDto,
+    avatar?: Express.Multer.File,
+  ) {
+    const profile = await this.findUserById(uid);
+
+    if (avatar) {
+      avatar.filename = `${Date.now()}-${uid}`;
+      const upload = await this.cloudinaryService.uploadImage(avatar);
+      dto.avatarUrl = (upload as { url: string }).url;
+    }
+
+    if (dto.userName) {
+      dto['username'] = dto.userName.toLowerCase().replace(/\s+/g, '-');
+      delete dto.userName;
+    }
+
+    Object.assign(profile, dto);
+    return this.profileRepository.save(profile);
   }
 
   async findUserByName(username: string) {

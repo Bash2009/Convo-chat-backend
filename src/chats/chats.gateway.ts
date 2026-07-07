@@ -153,6 +153,36 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     await client.leave(data.chatId);
   }
 
+  @SubscribeMessage('deleteChat')
+  async deleteChat(
+    @MessageBody() data: { chatId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const uid = this.verifyClient(client);
+      const result = await this.chatsService.delete(data.chatId, uid);
+      this.server.emit('chatDeleted', result);
+    } catch (err) {
+      console.error('deleteChat error:', err);
+      client.emit('error', { event: 'deleteChat', message: 'Failed to delete chat' });
+    }
+  }
+
+  @SubscribeMessage('addMember')
+  async addMember(
+    @MessageBody() data: { chatId: string; members: string[] },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const uid = this.verifyClient(client);
+      const chat = await this.chatsService.addMembers(data.chatId, data.members, uid);
+      this.server.emit('memberAdded', chat);
+    } catch (err) {
+      console.error('addMember error:', err);
+      client.emit('error', { event: 'addMember', message: 'Failed to add member' });
+    }
+  }
+
   @SubscribeMessage('sendMessage')
   async sendMessage(
     @MessageBody() data: { chatId: string; text: string },
