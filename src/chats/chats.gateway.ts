@@ -103,9 +103,10 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const uid = this.verifyClient(client);
       // Ensure the creator is always a member — copy to avoid mutating the DTO
-      const members = data.members.includes(uid)
-        ? data.members
-        : [...data.members, uid];
+      const currentMembers = data.members ?? [];
+      const members = currentMembers.includes(uid)
+        ? currentMembers
+        : [...currentMembers, uid];
       const newChat = await this.chatsService.create({ ...data, members });
       this.server.emit('chatCreated', newChat);
     } catch (err) {

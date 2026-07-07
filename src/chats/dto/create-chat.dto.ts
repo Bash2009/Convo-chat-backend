@@ -1,10 +1,10 @@
-import { IsArray, IsOptional, IsString, ArrayNotEmpty } from 'class-validator';
+import { IsArray, IsOptional, IsString } from 'class-validator';
 
 export class CreateChatDto {
   @IsArray()
-  @ArrayNotEmpty()
+  @IsOptional()
   @IsString({ each: true })
-  members: string[];
+  members?: string[];
 
   @IsString()
   @IsOptional()

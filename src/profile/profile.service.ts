@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { Profile } from './entities/profile.entity';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UserService } from 'src/user/user.service';
@@ -64,6 +64,12 @@ export class ProfileService {
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
+      }
+      if (error instanceof QueryFailedError) {
+        const driverError = error.driverError as { code?: string } | undefined;
+        if (driverError?.code === '23505') {
+          throw new ConflictException('Username already exists');
+        }
       }
       throw new InternalServerErrorException('Profile creation failed');
     }
