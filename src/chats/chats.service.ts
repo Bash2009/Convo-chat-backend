@@ -31,9 +31,13 @@ export class ChatsService {
       const { isGroup, members, name, admin } = createChatDto;
 
       // Deduplicate member UIDs (admin may already be in members list)
-      const allUids = [...new Set([...(members ?? []), ...(admin ? [admin] : [])])];
+      const allUids = [
+        ...new Set([...(members ?? []), ...(admin ? [admin] : [])]),
+      ];
 
-      const users = await queryRunner.manager.findBy(User, { uid: In(allUids) });
+      const users = await queryRunner.manager.findBy(User, {
+        uid: In(allUids),
+      });
 
       const chat = queryRunner.manager.create(Chat, {
         name: name ?? null,

@@ -1,6 +1,8 @@
 import {
   ConflictException,
+  HttpException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -25,15 +27,15 @@ export class ProfileService {
   ) {
     try {
       if (avatar) {
-        avatar.filename = ` ${Date.now()}-${createProfileDto.uid}`;
+        avatar.filename = `${Date.now()}-${createProfileDto.uid}`;
         const avatarUpload = await this.cloudinaryService
           .uploadImage(avatar)
-          .catch((error) => {
+          .catch((error: Error) => {
             throw new ConflictException(
               `Failed to upload avatar: ${error.message}`,
             );
           });
-        createProfileDto.avatarUrl = avatarUpload.url;
+        createProfileDto.avatarUrl = (avatarUpload as { url: string }).url;
       }
       // Check if user exists
       const user = await this.userService.findOneById(createProfileDto.uid);
@@ -60,11 +62,10 @@ export class ProfileService {
       await this.profileRepository.save(userProfile);
       return userProfile;
     } catch (error) {
-      if (error.message.includes('not found')) {
-        throw new NotFoundException(error.message);
-      } else {
-        throw new ConflictException(error.message);
+      if (error instanceof HttpException) {
+        throw error;
       }
+      throw new InternalServerErrorException('Profile creation failed');
     }
   }
 

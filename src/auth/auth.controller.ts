@@ -4,6 +4,7 @@ import { CreateUserDto } from '../user/dto/create-user.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import type { Request } from 'express';
 
 @Controller('auth')
 export class AuthController {
@@ -22,9 +23,9 @@ export class AuthController {
   /** Uses the refresh token (sent as Bearer) to issue a new token pair. */
   @UseGuards(RefreshTokenGuard)
   @Post('refresh')
-  refresh(@Req() req: any) {
-    // req.user is populated by RefreshTokenStrategy.validate()
-    return this.authService.refreshToken(req.user.userId);
+  refresh(@Req() req: Request) {
+    const user = req['user'] as { userId: string };
+    return this.authService.refreshToken(user.userId);
   }
 
   /** Signs the user out. Tokens are stateless so we just tell the client to discard them. */

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 import { UserService } from 'src/user/user.service';
@@ -11,6 +12,8 @@ import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private userService: UserService,
     private jwtService: JwtService,
@@ -44,8 +47,11 @@ export class AuthService {
       const tokens = await this.getTokens(user.uid);
       return { ...user, ...tokens };
     } catch (error) {
-      console.error(error);
-      throw new InternalServerErrorException(`${error}`);
+      this.logger.error(
+        `Registration failed: ${(error as Error).message}`,
+        (error as Error).stack,
+      );
+      throw new InternalServerErrorException('Registration failed');
     }
   }
 
@@ -62,7 +68,7 @@ export class AuthService {
 
   /** Stateless logout — tokens are short-lived so no server-side blacklist needed.
    *  The client discards both tokens; this endpoint exists for a clean API surface. */
-  async logout() {
+  logout() {
     return { message: 'Logged out successfully' };
   }
 }
