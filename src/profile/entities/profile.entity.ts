@@ -28,9 +28,6 @@ export class Profile {
   location: string;
 
   @Column({ nullable: true })
-  website: string;
-
-  @Column({ nullable: true })
   avatarUrl: string;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
