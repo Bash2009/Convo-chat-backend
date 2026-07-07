@@ -23,12 +23,13 @@ export class ProfileService {
   ) {}
 
   async create(
+    uid: string,
     createProfileDto: CreateProfileDto,
     avatar: Express.Multer.File,
   ) {
     try {
       if (avatar) {
-        avatar.filename = `${Date.now()}-${createProfileDto.uid}`;
+        avatar.filename = `${Date.now()}-${uid}`;
         const avatarUpload = await this.cloudinaryService
           .uploadImage(avatar)
           .catch((error: Error) => {
@@ -39,16 +40,14 @@ export class ProfileService {
         createProfileDto.avatarUrl = (avatarUpload as { url: string }).url;
       }
       // Check if user exists
-      const user = await this.userService.findOneById(createProfileDto.uid);
+      const user = await this.userService.findOneById(uid);
       if (!user) {
-        throw new NotFoundException(
-          `User with ID ${createProfileDto.uid} not found`,
-        );
+        throw new NotFoundException(`User with ID ${uid} not found`);
       }
 
       // Check if profile already exists for this user
       const existingProfile = await this.profileRepository.findOne({
-        where: { user: { uid: createProfileDto.uid } },
+        where: { user: { uid } },
       });
 
       if (existingProfile) {

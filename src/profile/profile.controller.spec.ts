@@ -27,15 +27,16 @@ describe('ProfileController', () => {
   });
 
   describe('create', () => {
-    it('delegates to service.create', async () => {
-      const dto = { uid: 'u1', userName: 'john', firstName: 'John', lastName: 'Doe', bio: 'Hi', location: 'NYC' } as any;
+    it('delegates to service.create with authenticated user', async () => {
+      const dto = { userName: 'john', firstName: 'John', lastName: 'Doe', bio: 'Hi', location: 'NYC' } as any;
       const avatar = { buffer: Buffer.from('') } as Express.Multer.File;
+      const req = { user: { userId: 'uid1' } } as any;
       service.create.mockResolvedValue(dto);
 
-      const result = await controller.create(dto, avatar);
+      const result = await controller.create(req, dto, avatar);
 
       expect(result).toEqual(dto);
-      expect(service.create).toHaveBeenCalledWith(dto, avatar);
+      expect(service.create).toHaveBeenCalledWith('uid1', dto, avatar);
     });
   });
 

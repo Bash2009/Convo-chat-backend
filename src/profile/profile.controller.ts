@@ -25,10 +25,12 @@ export class ProfileController {
   @Post('create')
   @UseInterceptors(FileInterceptor('avatar'))
   create(
+    @Req() req: Request,
     @Body() createProfileDto: CreateProfileDto,
     @UploadedFile() avatar: Express.Multer.File,
   ) {
-    return this.profileService.create(createProfileDto, avatar);
+    const uid = (req['user'] as { userId: string }).userId;
+    return this.profileService.create(uid, createProfileDto, avatar);
   }
 
   @Patch('update')

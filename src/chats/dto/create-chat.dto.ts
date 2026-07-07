@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsOptional,
   IsString,
   Validate,
@@ -32,6 +33,7 @@ export class CreateChatDto {
   @IsOptional()
   name: string;
 
+  @IsBoolean()
   @IsOptional()
   isGroup: boolean;
 

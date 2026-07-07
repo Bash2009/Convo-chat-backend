@@ -56,13 +56,13 @@ describe('ProfileService', () => {
 
   describe('create', () => {
     it('creates a profile without avatar', async () => {
-      const dto = { uid: 'uid1', userName: 'JohnDoe', firstName: 'John', lastName: 'Doe', bio: 'Hi', location: 'NYC' } as any;
+      const dto = { userName: 'JohnDoe', firstName: 'John', lastName: 'Doe', bio: 'Hi', location: 'NYC' } as any;
       userService.findOneById.mockResolvedValue(mockUser);
       repo.findOne.mockResolvedValue(null);
       repo.create.mockReturnValue(mockProfile);
       repo.save.mockResolvedValue(mockProfile);
 
-      const result = await service.create(dto, undefined);
+      const result = await service.create('uid1', dto, undefined);
 
       expect(result).toEqual(mockProfile);
       expect(repo.create).toHaveBeenCalledWith(
@@ -71,7 +71,7 @@ describe('ProfileService', () => {
     });
 
     it('uploads avatar when provided', async () => {
-      const dto = { uid: 'uid1', userName: 'JohnDoe', firstName: 'John', lastName: 'Doe', bio: 'Hi', location: 'NYC' } as any;
+      const dto = { userName: 'JohnDoe', firstName: 'John', lastName: 'Doe', bio: 'Hi', location: 'NYC' } as any;
       const avatar = { buffer: Buffer.from(''), filename: '' } as Express.Multer.File;
       userService.findOneById.mockResolvedValue(mockUser);
       repo.findOne.mockResolvedValue(null);
@@ -79,7 +79,7 @@ describe('ProfileService', () => {
       repo.create.mockReturnValue({ ...mockProfile, avatarUrl: 'https://cdn.com/avatar' });
       repo.save.mockResolvedValue({ ...mockProfile, avatarUrl: 'https://cdn.com/avatar' });
 
-      const result = await service.create(dto, avatar);
+      const result = await service.create('uid1', dto, avatar);
 
       expect(result.avatarUrl).toBe('https://cdn.com/avatar');
       expect(cloudinary.uploadImage).toHaveBeenCalledWith(avatar);
@@ -88,14 +88,14 @@ describe('ProfileService', () => {
     it('throws NotFoundException when user does not exist', async () => {
       userService.findOneById.mockResolvedValue(null);
 
-      await expect(service.create({ uid: 'unknown' } as any, undefined)).rejects.toThrow(NotFoundException);
+      await expect(service.create('unknown', {} as any, undefined)).rejects.toThrow(NotFoundException);
     });
 
     it('throws ConflictException when profile already exists', async () => {
       userService.findOneById.mockResolvedValue(mockUser);
       repo.findOne.mockResolvedValue(mockProfile);
 
-      await expect(service.create({ uid: 'uid1' } as any, undefined)).rejects.toThrow(ConflictException);
+      await expect(service.create('uid1', {} as any, undefined)).rejects.toThrow(ConflictException);
     });
 
     it('throws ConflictException on duplicate username (PG error 23505)', async () => {
@@ -103,7 +103,7 @@ describe('ProfileService', () => {
       repo.findOne.mockResolvedValue(null);
       repo.save.mockImplementation(() => Promise.reject({ driverError: { code: '23505' } }));
 
-      await expect(service.create({ uid: 'uid1', userName: 'John' } as any, undefined)).rejects.toThrow(ConflictException);
+      await expect(service.create('uid1', { userName: 'John' } as any, undefined)).rejects.toThrow(ConflictException);
     });
   });
 
