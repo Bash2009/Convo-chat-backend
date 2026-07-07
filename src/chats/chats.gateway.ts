@@ -13,6 +13,8 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ChatsService } from './chats.service';
 import { CreateChatDto } from './dto/create-chat.dto';
+import { validateOrReject } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 
 @WebSocketGateway({
   cors: {
@@ -102,12 +104,17 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     try {
       const uid = this.verifyClient(client);
+
+      // WebSocket messages bypass NestJS ValidationPipe — validate inline
+      const dto = plainToInstance(CreateChatDto, data);
+      await validateOrReject(dto);
+
       // Ensure the creator is always a member — copy to avoid mutating the DTO
-      const currentMembers = data.members ?? [];
+      const currentMembers = dto.members ?? [];
       const members = currentMembers.includes(uid)
         ? currentMembers
         : [...currentMembers, uid];
-      const newChat = await this.chatsService.create({ ...data, members });
+      const newChat = await this.chatsService.create({ ...dto, members });
       this.server.emit('chatCreated', newChat);
     } catch (err) {
       console.error('createChat error:', err);
