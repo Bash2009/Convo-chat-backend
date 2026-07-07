@@ -63,12 +63,13 @@ describe('ProfileController', () => {
   });
 
   describe('update', () => {
-    it('delegates to service.update', async () => {
+    it('delegates to service.update with authenticated user', async () => {
       const dto = { firstName: 'Jane' };
       const avatar = { buffer: Buffer.from('') } as Express.Multer.File;
+      const req = { user: { userId: 'uid1' } } as any;
       service.update.mockResolvedValue({ firstName: 'Jane' } as any);
 
-      const result = await controller.update('uid1', dto, avatar);
+      const result = await controller.update(req, dto, avatar);
 
       expect(result.firstName).toBe('Jane');
       expect(service.update).toHaveBeenCalledWith('uid1', dto, avatar);

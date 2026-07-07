@@ -1,13 +1,12 @@
 import {
   ConflictException,
-  ForbiddenException,
   HttpException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Profile } from './entities/profile.entity';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -67,11 +66,9 @@ export class ProfileService {
       if (error instanceof HttpException) {
         throw error;
       }
-      if (error instanceof QueryFailedError) {
-        const driverError = error.driverError as { code?: string } | undefined;
-        if (driverError?.code === '23505') {
-          throw new ConflictException('Username already exists');
-        }
+      const driverError = (error as { driverError?: { code?: string } }).driverError;
+      if (driverError?.code === '23505') {
+        throw new ConflictException('Username already exists');
       }
       throw new InternalServerErrorException('Profile creation failed');
     }
@@ -92,21 +89,30 @@ export class ProfileService {
     dto: UpdateProfileDto,
     avatar?: Express.Multer.File,
   ) {
-    const profile = await this.findUserById(uid);
+    try {
+      const profile = await this.findUserById(uid);
 
-    if (avatar) {
-      avatar.filename = `${Date.now()}-${uid}`;
-      const upload = await this.cloudinaryService.uploadImage(avatar);
-      dto.avatarUrl = (upload as { url: string }).url;
+      if (avatar) {
+        avatar.filename = `${Date.now()}-${uid}`;
+        const upload = await this.cloudinaryService.uploadImage(avatar);
+        dto.avatarUrl = (upload as { url: string }).url;
+      }
+
+      if (dto.userName) {
+        dto['username'] = dto.userName.toLowerCase().replace(/\s+/g, '-');
+        delete dto.userName;
+      }
+
+      Object.assign(profile, dto);
+      return this.profileRepository.save(profile);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const driverError = (error as { driverError?: { code?: string } }).driverError;
+      if (driverError?.code === '23505') {
+        throw new ConflictException('Username already exists');
+      }
+      throw new InternalServerErrorException('Profile update failed');
     }
-
-    if (dto.userName) {
-      dto['username'] = dto.userName.toLowerCase().replace(/\s+/g, '-');
-      delete dto.userName;
-    }
-
-    Object.assign(profile, dto);
-    return this.profileRepository.save(profile);
   }
 
   async findUserByName(username: string) {

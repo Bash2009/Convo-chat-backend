@@ -153,7 +153,7 @@ describe('ChatsService', () => {
 
   describe('addMembers', () => {
     it('adds new members to a group chat', async () => {
-      const chat = { ...mockChat, isGroup: true, members: [{ user: { uid: 'uid1' } }] } as any;
+      const chat = { ...mockChat, isGroup: true, members: [{ user: { uid: 'uid1' }, role: 'admin' }] } as any;
       chatRepository.findOne.mockResolvedValue(chat);
       dataSource.manager.findBy.mockResolvedValue([mockUser2]);
       chatMemberRepository.create.mockReturnValue({} as any);
@@ -168,21 +168,28 @@ describe('ChatsService', () => {
     });
 
     it('throws ForbiddenException when chat is not a group', async () => {
-      const chat = { ...mockChat, isGroup: false, members: [{ user: { uid: 'uid1' } }] } as any;
+      const chat = { ...mockChat, isGroup: false, members: [{ user: { uid: 'uid1' }, role: 'admin' }] } as any;
       chatRepository.findOne.mockResolvedValue(chat);
 
       await expect(service.addMembers('chat-id', ['uid2'], 'uid1')).rejects.toThrow(ForbiddenException);
     });
 
     it('throws ForbiddenException when requester is not a member', async () => {
-      const chat = { ...mockChat, isGroup: true, members: [{ user: { uid: 'uid2' } }] } as any;
+      const chat = { ...mockChat, isGroup: true, members: [{ user: { uid: 'uid2' }, role: 'admin' }] } as any;
       chatRepository.findOne.mockResolvedValue(chat);
 
       await expect(service.addMembers('chat-id', ['uid3'], 'uid1')).rejects.toThrow(ForbiddenException);
     });
 
+    it('throws ForbiddenException when requester is not an admin', async () => {
+      const chat = { ...mockChat, isGroup: true, members: [{ user: { uid: 'uid1' }, role: 'member' }] } as any;
+      chatRepository.findOne.mockResolvedValue(chat);
+
+      await expect(service.addMembers('chat-id', ['uid2'], 'uid1')).rejects.toThrow(ForbiddenException);
+    });
+
     it('skips already existing members', async () => {
-      const chat = { ...mockChat, isGroup: true, members: [{ user: { uid: 'uid1' } }, { user: { uid: 'uid2' } }] } as any;
+      const chat = { ...mockChat, isGroup: true, members: [{ user: { uid: 'uid1' }, role: 'admin' }, { user: { uid: 'uid2' }, role: 'member' }] } as any;
       chatRepository.findOne.mockResolvedValue(chat);
       chatRepository.findOneOrFail.mockResolvedValue(chat);
 

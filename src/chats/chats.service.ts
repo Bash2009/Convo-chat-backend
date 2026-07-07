@@ -86,7 +86,7 @@ export class ChatsService {
   async delete(chatId: string, requesterUid: string) {
     const chat = await this.chatRepository.findOne({
       where: { id: chatId },
-      relations: { members: true },
+      relations: { members: { user: true } },
     });
     if (!chat) throw new NotFoundException('Chat not found');
 
@@ -107,8 +107,9 @@ export class ChatsService {
     if (!chat) throw new NotFoundException('Chat not found');
     if (!chat.isGroup) throw new ForbiddenException('Cannot add members to a private chat');
 
-    const isMember = chat.members.some((m) => m.user?.uid === requesterUid);
-    if (!isMember) throw new ForbiddenException('Not a member of this chat');
+    const requesterMember = chat.members.find((m) => m.user?.uid === requesterUid);
+    if (!requesterMember) throw new ForbiddenException('Not a member of this chat');
+    if (requesterMember.role !== 'admin') throw new ForbiddenException('Only admins can add members');
 
     const existingUids = new Set(chat.members.map((m) => m.user.uid));
     const toAdd = newUids.filter((u) => !existingUids.has(u));

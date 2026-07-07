@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -14,6 +15,7 @@ import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import type { Request } from 'express';
 
 @UseGuards(JwtAuthGuard)
 @Controller('profile')
@@ -29,13 +31,14 @@ export class ProfileController {
     return this.profileService.create(createProfileDto, avatar);
   }
 
-  @Patch('update/:uid')
+  @Patch('update')
   @UseInterceptors(FileInterceptor('avatar'))
   update(
-    @Param('uid') uid: string,
+    @Req() req: Request,
     @Body() dto: UpdateProfileDto,
     @UploadedFile() avatar?: Express.Multer.File,
   ) {
+    const uid = (req['user'] as { userId: string }).userId;
     return this.profileService.update(uid, dto, avatar);
   }
 

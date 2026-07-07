@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { Repository, QueryFailedError } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ProfileService } from './profile.service';
 import { Profile } from './entities/profile.entity';
 import { UserService } from '../user/user.service';
@@ -101,9 +101,7 @@ describe('ProfileService', () => {
     it('throws ConflictException on duplicate username (PG error 23505)', async () => {
       userService.findOneById.mockResolvedValue(mockUser);
       repo.findOne.mockResolvedValue(null);
-      repo.save.mockRejectedValue(
-        new QueryFailedError('query', [], { code: '23505' } as any),
-      );
+      repo.save.mockImplementation(() => Promise.reject({ driverError: { code: '23505' } }));
 
       await expect(service.create({ uid: 'uid1', userName: 'John' } as any, undefined)).rejects.toThrow(ConflictException);
     });
@@ -180,6 +178,16 @@ describe('ProfileService', () => {
       repo.findOne.mockResolvedValue(null);
 
       await expect(service.update('unknown', {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ConflictException on duplicate username', async () => {
+      const dto = { userName: 'TakenName' };
+      repo.findOne.mockResolvedValue(mockProfile);
+      const err = new Error();
+      (err as any).driverError = { code: '23505' };
+      repo.save.mockImplementation(() => { throw err; });
+
+      await expect(service.update('uid1', dto as any)).rejects.toThrow(ConflictException);
     });
   });
 });
