@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import {
   WebSocketGateway,
   OnGatewayConnection,
@@ -7,7 +8,6 @@ import {
   MessageBody,
   ConnectedSocket,
   WsException,
-  Logger,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
