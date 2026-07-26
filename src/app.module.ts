@@ -30,9 +30,6 @@ import { ChatsModule } from './chats/chats.module';
         logging: configService.get<string>('NODE_ENV') === 'development',
         synchronize: false,
         migrationsRun: true,
-        ssl: {
-          rejectUnauthorized: false,
-        },
       }),
     }),
     CloudinaryModule,
