@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
-import { Request } from 'express';
+import type { Request } from 'express';
 
 interface JwtPayload {
   sub: string;
@@ -11,7 +11,8 @@ interface JwtPayload {
 }
 
 function extractJwtFromCookie(req: Request): string | null {
-  return req.cookies?.refresh_token ?? null;
+  const cookies = req.cookies as Record<string, string> | undefined;
+  return cookies?.refresh_token ?? null;
 }
 
 @Injectable()
@@ -28,9 +29,11 @@ export class RefreshTokenStrategy extends PassportStrategy(
       );
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     super({
-      jwtFromRequest: (req: Request) => {
-        const headerToken = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+      jwtFromRequest: (req: Request): string | null => {
+        const extract = ExtractJwt.fromAuthHeaderAsBearerToken();
+        const headerToken = extract(req);
         return headerToken ?? extractJwtFromCookie(req);
       },
       secretOrKey: refreshSecret,
@@ -39,9 +42,10 @@ export class RefreshTokenStrategy extends PassportStrategy(
   }
 
   validate(req: Request, payload: JwtPayload) {
-    const authHeader = req.get('Authorization');
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const authHeader = req.headers.authorization;
     const refreshToken =
-      authHeader?.split(' ')[1] ?? req.cookies?.refresh_token ?? null;
+      authHeader?.split(' ')[1] ?? cookies?.refresh_token ?? null;
 
     return {
       userId: payload.sub,

@@ -275,7 +275,9 @@ export class ChatsService {
 
     if (rows.length === 0) return null;
 
-    const chatId = rows[0].cm_chat_id ?? rows[0].cmChatId;
+    type RawRow = { cm_chat_id?: string; cmChatId?: string };
+    const rawRow = rows[0] as RawRow;
+    const chatId = rawRow.cm_chat_id ?? rawRow.cmChatId;
     return this.chatRepository.findOne({
       where: { id: chatId },
       relations: { members: { user: { profile: true } } },

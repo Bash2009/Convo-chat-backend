@@ -27,7 +27,7 @@ export class AuthService {
     @InjectRepository(RevokedToken)
     private revokedTokenRepository: Repository<RevokedToken>,
   ) {
-    this.cleanExpiredTokens();
+    void this.cleanExpiredTokens();
   }
 
   private async cleanExpiredTokens() {
@@ -35,7 +35,9 @@ export class AuthService {
       await this.revokedTokenRepository.delete({
         expiresAt: LessThan(new Date()),
       });
-    } catch {}
+    } catch {
+      // expired-token cleanup is best-effort
+    }
   }
 
   private async getTokens(uid: string) {

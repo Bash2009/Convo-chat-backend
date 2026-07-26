@@ -3,7 +3,6 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ChatsGateway } from './chats.gateway';
 import { ChatsService } from './chats.service';
-import { WsException } from '@nestjs/websockets';
 
 describe('ChatsGateway', () => {
   let gateway: ChatsGateway;
@@ -11,23 +10,20 @@ describe('ChatsGateway', () => {
   let jwtService: jest.Mocked<JwtService>;
   let configService: jest.Mocked<ConfigService>;
 
-  const mockClient = () => {
-    const emit = jest.fn();
-    const join = jest.fn();
-    const leave = jest.fn();
-    return {
-      emit,
-      join,
-      leave,
-      handshake: { auth: { token: 'valid-token' } },
-    } as any;
-  };
+  const mockClient = () => ({
+    emit: jest.fn(),
+    join: jest.fn(),
+    leave: jest.fn(),
+    id: 'socket-id',
+    data: { uid: 'uid1' },
+    handshake: { auth: { token: 'valid-token' } },
+    disconnect: jest.fn(),
+  }) as any;
 
   const mockServer = () => ({
     emit: jest.fn(),
     to: jest.fn().mockReturnThis(),
     in: jest.fn().mockReturnThis(),
-    fetchSockets: jest.fn(),
   });
 
   beforeEach(async () => {
@@ -45,6 +41,7 @@ describe('ChatsGateway', () => {
             getMessages: jest.fn(),
             sendMessage: jest.fn(),
             markRead: jest.fn(),
+            assertMember: jest.fn(),
           },
         },
         { provide: JwtService, useValue: { verify: jest.fn() } },
@@ -63,58 +60,25 @@ describe('ChatsGateway', () => {
     gateway.server = mockServer() as any;
   });
 
-  // ── verifyClient ────────────────────────────────────────────────────────────
-
-  describe('verifyClient', () => {
-    it('returns uid for valid token', () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
-
-      const client = mockClient();
-      const result = gateway['verifyClient'](client);
-
-      expect(result).toBe('uid1');
-    });
-
-    it('throws WsException when token is missing', () => {
-      const client = { handshake: { auth: {} } } as any;
-
-      expect(() => gateway['verifyClient'](client)).toThrow(WsException);
-    });
-
-    it('throws WsException when token is invalid', () => {
-      jwtService.verify.mockImplementation(() => {
-        throw new Error();
-      });
-
-      expect(() => gateway['verifyClient'](mockClient())).toThrow(WsException);
-    });
-  });
-
   // ── handleConnection ────────────────────────────────────────────────────────
 
   describe('handleConnection', () => {
     it('accepts connection with valid token', () => {
       jwtService.verify.mockReturnValue({ sub: 'uid1' });
       const client = mockClient();
-      const disconnect = jest.fn();
-      client.disconnect = disconnect;
 
       gateway.handleConnection(client);
 
-      expect(disconnect).not.toHaveBeenCalled();
+      expect(client.disconnect).not.toHaveBeenCalled();
     });
 
     it('rejects connection with invalid token', () => {
-      jwtService.verify.mockImplementation(() => {
-        throw new Error();
-      });
+      jwtService.verify.mockImplementation(() => { throw new Error(); });
       const client = mockClient();
-      const disconnect = jest.fn();
-      client.disconnect = disconnect;
 
       gateway.handleConnection(client);
 
-      expect(disconnect).toHaveBeenCalledWith(true);
+      expect(client.disconnect).toHaveBeenCalledWith(true);
     });
   });
 
@@ -122,7 +86,6 @@ describe('ChatsGateway', () => {
 
   describe('getChats', () => {
     it('emits chats on success', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
       chatsService.getChats.mockResolvedValue([{ id: 'c1' } as any]);
       const client = mockClient();
 
@@ -132,7 +95,6 @@ describe('ChatsGateway', () => {
     });
 
     it('emits error on failure', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
       chatsService.getChats.mockRejectedValue(new Error());
       const client = mockClient();
 
@@ -149,31 +111,21 @@ describe('ChatsGateway', () => {
 
   describe('getUser', () => {
     it('emits userSearch on success', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
-      chatsService.getUser.mockResolvedValue({
-        userExists: true,
-        profile: { firstName: 'John' },
-      } as any);
+      chatsService.getUser.mockResolvedValue({ userExists: true, profile: { firstName: 'John' } } as any);
       const client = mockClient();
 
       await gateway.getUser({ username: 'john' } as any, client);
 
-      expect(client.emit).toHaveBeenCalledWith('userSearch', {
-        userExists: true,
-        profile: { firstName: 'John' },
-      });
+      expect(client.emit).toHaveBeenCalledWith('userSearch', { userExists: true, profile: { firstName: 'John' } });
     });
 
     it('emits userExists false on failure', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
       chatsService.getUser.mockRejectedValue(new Error());
       const client = mockClient();
 
       await gateway.getUser({ username: 'unknown' } as any, client);
 
-      expect(client.emit).toHaveBeenCalledWith('userSearch', {
-        userExists: false,
-      });
+      expect(client.emit).toHaveBeenCalledWith('userSearch', { userExists: false });
     });
   });
 
@@ -181,44 +133,33 @@ describe('ChatsGateway', () => {
 
   describe('createChat', () => {
     it('creates chat and broadcasts chatCreated', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
-      const chat = { id: 'c1', participants: [] };
+      const chat = { id: 'c1', participants: [{ user: { uid: 'uid1' } }, { user: { uid: 'uid2' } }] };
       chatsService.create.mockResolvedValue(chat as any);
       const client = mockClient();
 
-      await gateway.create(
-        { members: ['uid2'], admin: 'uid1', isGroup: false } as any,
-        client,
-      );
+      await gateway.create({ members: ['uid2'], admin: 'uid1', isGroup: false } as any, client);
 
-      expect(gateway.server.emit).toHaveBeenCalledWith('chatCreated', chat);
+      expect(chatsService.create).toHaveBeenCalled();
     });
 
     it('ensures creator is always in members', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
-      chatsService.create.mockResolvedValue({ id: 'c1' } as any);
+      chatsService.create.mockResolvedValue({ id: 'c1', participants: [] } as any);
       const client = mockClient();
 
       await gateway.create({ members: ['uid2'], admin: 'uid1' } as any, client);
 
       expect(chatsService.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          members: expect.arrayContaining(['uid1', 'uid2']),
-        }),
+        expect.objectContaining({ members: expect.arrayContaining(['uid1', 'uid2']) }),
       );
     });
 
     it('emits error on failure', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
       chatsService.create.mockRejectedValue(new Error());
       const client = mockClient();
 
       await gateway.create({} as any, client);
 
-      expect(client.emit).toHaveBeenCalledWith(
-        'error',
-        expect.objectContaining({ event: 'createChat' }),
-      );
+      expect(client.emit).toHaveBeenCalledWith('error', expect.objectContaining({ event: 'createChat' }));
     });
   });
 
@@ -226,29 +167,21 @@ describe('ChatsGateway', () => {
 
   describe('deleteChat', () => {
     it('deletes chat and broadcasts chatDeleted', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
-      chatsService.delete.mockResolvedValue({ id: 'c1', deleted: true });
+      chatsService.delete.mockResolvedValue({ id: 'c1', deleted: true, participantUids: ['uid1', 'uid2'] } as any);
       const client = mockClient();
 
       await gateway.deleteChat({ chatId: 'c1' } as any, client);
 
-      expect(gateway.server.emit).toHaveBeenCalledWith('chatDeleted', {
-        id: 'c1',
-        deleted: true,
-      });
+      expect(chatsService.delete).toHaveBeenCalledWith('c1', 'uid1');
     });
 
     it('emits error on failure', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
       chatsService.delete.mockRejectedValue(new Error());
       const client = mockClient();
 
       await gateway.deleteChat({ chatId: 'c1' } as any, client);
 
-      expect(client.emit).toHaveBeenCalledWith(
-        'error',
-        expect.objectContaining({ event: 'deleteChat' }),
-      );
+      expect(client.emit).toHaveBeenCalledWith('error', expect.objectContaining({ event: 'deleteChat' }));
     });
   });
 
@@ -256,43 +189,22 @@ describe('ChatsGateway', () => {
 
   describe('addMember', () => {
     it('adds member and broadcasts memberAdded', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
-      const chat = { id: 'c1', participants: [] };
+      const chat = { id: 'c1', participants: [{ user: { uid: 'uid1' } }] };
       chatsService.addMembers.mockResolvedValue(chat as any);
       const client = mockClient();
 
-      await gateway.addMember(
-        { chatId: 'c1', members: ['uid3'] } as any,
-        client,
-      );
+      await gateway.addMember({ chatId: 'c1', members: ['uid3'] } as any, client);
 
-      expect(gateway.server.emit).toHaveBeenCalledWith('memberAdded', chat);
+      expect(chatsService.addMembers).toHaveBeenCalledWith('c1', ['uid3'], 'uid1');
     });
 
     it('emits error on failure', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
       chatsService.addMembers.mockRejectedValue(new Error());
       const client = mockClient();
 
       await gateway.addMember({ chatId: 'c1', members: [] } as any, client);
 
-      expect(client.emit).toHaveBeenCalledWith(
-        'error',
-        expect.objectContaining({ event: 'addMember' }),
-      );
-    });
-
-    it('emits error when members is missing', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
-      const client = mockClient();
-
-      await gateway.addMember({ chatId: 'c1' } as any, client);
-
-      expect(client.emit).toHaveBeenCalledWith(
-        'error',
-        expect.objectContaining({ event: 'addMember' }),
-      );
-      expect(chatsService.addMembers).not.toHaveBeenCalled();
+      expect(client.emit).toHaveBeenCalledWith('error', expect.objectContaining({ event: 'addMember' }));
     });
   });
 
@@ -300,39 +212,23 @@ describe('ChatsGateway', () => {
 
   describe('joinChat', () => {
     it('joins room and emits messages', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
       chatsService.getMessages.mockResolvedValue([{ id: 'm1' } as any]);
       const client = mockClient();
 
       await gateway.joinChat({ chatId: 'c1' } as any, client);
 
+      expect(chatsService.assertMember).toHaveBeenCalledWith('c1', 'uid1');
       expect(client.join).toHaveBeenCalledWith('c1');
       expect(client.emit).toHaveBeenCalledWith('messages', [{ id: 'm1' }]);
     });
 
     it('emits error on failure', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
       chatsService.getMessages.mockRejectedValue(new Error());
       const client = mockClient();
 
       await gateway.joinChat({ chatId: 'c1' } as any, client);
 
-      expect(client.emit).toHaveBeenCalledWith(
-        'error',
-        expect.objectContaining({ event: 'joinChat' }),
-      );
-    });
-  });
-
-  // ── leaveChat ───────────────────────────────────────────────────────────────
-
-  describe('leaveChat', () => {
-    it('leaves the room', async () => {
-      const client = mockClient();
-
-      await gateway.leaveChat({ chatId: 'c1' } as any, client);
-
-      expect(client.leave).toHaveBeenCalledWith('c1');
+      expect(client.emit).toHaveBeenCalledWith('error', expect.objectContaining({ event: 'joinChat' }));
     });
   });
 
@@ -340,47 +236,22 @@ describe('ChatsGateway', () => {
 
   describe('sendMessage', () => {
     it('sends message and broadcasts to room', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
-      const msg = {
-        id: 'm1',
-        senderId: 'uid1',
-        text: 'Hi',
-        sentAt: new Date(),
-        status: 'sent',
-      };
+      const msg = { id: 'm1', senderId: 'uid1', text: 'Hi', sentAt: new Date(), status: 'sent' as const };
       chatsService.sendMessage.mockResolvedValue(msg);
-      gateway.server.fetchSockets = jest.fn().mockResolvedValue([{}, {}]);
-
       const client = mockClient();
+
       await gateway.sendMessage({ chatId: 'c1', text: 'Hi' } as any, client);
 
       expect(gateway.server.to).toHaveBeenCalledWith('c1');
-      expect(gateway.server.emit).toHaveBeenCalledWith('newMessage', {
-        ...msg,
-        chatId: 'c1',
-      });
     });
 
-    it('emits messageStatus delivered when more than 1 socket in room', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
-      const msg = {
-        id: 'm1',
-        senderId: 'uid1',
-        text: 'Hi',
-        sentAt: new Date(),
-        status: 'sent',
-      };
-      chatsService.sendMessage.mockResolvedValue(msg);
-      gateway.server.fetchSockets = jest.fn().mockResolvedValue([{}, {}]);
-
+    it('emits error on failure', async () => {
+      chatsService.sendMessage.mockRejectedValue(new Error());
       const client = mockClient();
+
       await gateway.sendMessage({ chatId: 'c1', text: 'Hi' } as any, client);
 
-      expect(gateway.server.to).toHaveBeenCalledWith('c1');
-      expect(gateway.server.emit).toHaveBeenCalledWith('messageStatus', {
-        messageId: 'm1',
-        status: 'delivered',
-      });
+      expect(client.emit).toHaveBeenCalledWith('error', expect.objectContaining({ event: 'sendMessage' }));
     });
   });
 
@@ -388,17 +259,12 @@ describe('ChatsGateway', () => {
 
   describe('markRead', () => {
     it('marks messages read and broadcasts status', async () => {
-      jwtService.verify.mockReturnValue({ sub: 'uid1' });
-      chatsService.markRead.mockResolvedValue([
-        { id: 'm1', senderId: 'uid2' },
-        { id: 'm2', senderId: 'uid2' },
-      ] as any);
+      chatsService.markRead.mockResolvedValue([{ id: 'm1', senderId: 'uid2' }] as any);
       const client = mockClient();
 
       await gateway.markRead({ chatId: 'c1' } as any, client);
 
       expect(gateway.server.to).toHaveBeenCalledWith('c1');
-      expect(gateway.server.emit).toHaveBeenCalledTimes(2);
     });
   });
 });

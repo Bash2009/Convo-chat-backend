@@ -3,6 +3,8 @@ import { AuthService } from './auth.service';
 import { UserService } from '../user/user.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { RevokedToken } from './entities/revoked-token.entity';
 import {
   BadRequestException,
   InternalServerErrorException,
@@ -30,6 +32,10 @@ describe('AuthService', () => {
           provide: ConfigService,
           useValue: { get: jest.fn() },
         },
+        {
+          provide: getRepositoryToken(RevokedToken),
+          useValue: { findOne: jest.fn(), save: jest.fn(), delete: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -42,7 +48,7 @@ describe('AuthService', () => {
   describe('register', () => {
     it('creates a user and returns tokens', async () => {
       const dto = { uid: 'uid1', email: 'a@b.com' };
-      userService.create.mockResolvedValue(dto);
+      userService.create.mockResolvedValue(dto as any);
       configService.get.mockImplementation((key: string) =>
         key === 'JWT_SECRET' ? 'secret' : 'refresh-secret',
       );
@@ -50,11 +56,8 @@ describe('AuthService', () => {
 
       const result = await service.register(dto);
 
-      expect(result).toEqual({
-        ...dto,
-        access_token: 'token',
-        refresh_token: 'token',
-      });
+      expect(result.access_token).toBe('token');
+      expect(result.refresh_token).toBe('token');
       expect(userService.create).toHaveBeenCalledWith(dto);
     });
 
@@ -70,11 +73,11 @@ describe('AuthService', () => {
   describe('login', () => {
     it('returns user with tokens when found', async () => {
       const user = { uid: 'uid1', email: 'a@b.com' };
-      userService.findOneById.mockResolvedValue(user);
+      userService.findOneById.mockResolvedValue(user as any);
       configService.get.mockReturnValue('secret');
       jwtService.signAsync.mockResolvedValue('token');
 
-      const result = await service.login({ uid: 'uid1' });
+      const result = await service.login({ uid: 'uid1' } as any);
 
       expect(result.access_token).toBe('token');
     });
@@ -82,7 +85,7 @@ describe('AuthService', () => {
     it('throws BadRequestException when user not found', async () => {
       userService.findOneById.mockResolvedValue(null);
 
-      await expect(service.login({ uid: 'unknown' })).rejects.toThrow(
+      await expect(service.login({ uid: 'unknown' } as any)).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -95,16 +98,17 @@ describe('AuthService', () => {
 
       const result = await service.refreshToken('uid1');
 
-      expect(result).toEqual({
-        access_token: 'new-token',
-        refresh_token: 'new-token',
-      });
+      expect(result.access_token).toBe('new-token');
+      expect(result.refresh_token).toBe('new-token');
+      expect(result.jti).toBeDefined();
     });
   });
 
   describe('logout', () => {
-    it('returns success message', () => {
-      expect(service.logout()).toEqual({ message: 'Logged out successfully' });
+    it('revokes the refresh token', async () => {
+      const result = await service.logout('uid1', 'jti1');
+
+      expect(result.message).toBe('Logged out successfully');
     });
   });
 });

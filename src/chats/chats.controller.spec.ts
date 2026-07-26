@@ -26,21 +26,24 @@ describe('ChatsController', () => {
   });
 
   describe('create', () => {
-    it('delegates to service.create', async () => {
+    it('delegates to service.create with caller uid forced in', async () => {
       const dto = { members: ['uid2'], admin: 'uid1' };
+      const req = { user: { userId: 'uid1' } } as any;
       service.create.mockResolvedValue({ id: 'chat-id' } as any);
 
-      const result = await controller.create(dto as any);
+      const result = await controller.create(dto as any, req);
 
       expect(result.id).toBe('chat-id');
-      expect(service.create).toHaveBeenCalledWith(dto);
+      expect(service.create).toHaveBeenCalledWith(
+        expect.objectContaining({ members: expect.arrayContaining(['uid1', 'uid2']) }),
+      );
     });
   });
 
   describe('delete', () => {
     it('delegates to service.delete', async () => {
       const req = { user: { userId: 'uid1' } } as any;
-      service.delete.mockResolvedValue({ id: 'chat-id', deleted: true });
+      service.delete.mockResolvedValue({ id: 'chat-id', deleted: true, participantUids: ['uid1'] } as any);
 
       const result = await controller.delete('chat-id', req);
 

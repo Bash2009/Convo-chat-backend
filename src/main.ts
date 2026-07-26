@@ -4,6 +4,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import compression from 'compression';
+import type { Request, Response, NextFunction } from 'express';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -11,8 +12,9 @@ async function bootstrap() {
 
   app.use(helmet());
   app.use(cookieParser());
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   app.use(compression());
-  app.use((req, res, next) => {
+  app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.method === 'GET') {
       res.setHeader('Cache-Control', 'private, max-age=60');
     }

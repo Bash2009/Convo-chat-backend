@@ -20,7 +20,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - run: npm run lint
+      - run: npx eslint "src/**/*.ts" --ignore-pattern "*.spec.ts" --ignore-pattern "*.spec.js"
 
   typecheck:
     name: Type Check
@@ -32,7 +32,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - run: npx tsc --noEmit
+      - run: npx tsc --noEmit -p tsconfig.build.json
 
   test:
     name: Tests

@@ -36,6 +36,12 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     { count: number; resetAt: number }
   >();
 
+  private getUid(client: Socket): string {
+    const data = client.data as { uid: string };
+    if (!data.uid) throw new WsException('Not authenticated');
+    return data.uid;
+  }
+
   private checkThrottle(
     socketId: string,
     limit = 30,
@@ -77,7 +83,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const sockets = this.uidToSocketId.get(uid) ?? new Set();
       sockets.add(client.id);
       this.uidToSocketId.set(uid, sockets);
-      client.data.uid = uid;
+      (client.data as { uid: string }).uid = uid;
       this.logger.log(`Client connected: ${client.id} (${uid})`);
     } catch {
       this.logger.warn(`Rejected unauthenticated socket: ${client.id}`);
@@ -86,7 +92,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   handleDisconnect(client: Socket) {
-    const uid = client.data.uid as string | undefined;
+    const uid = (client.data as { uid?: string }).uid;
     if (uid) {
       const sockets = this.uidToSocketId.get(uid);
       if (sockets) {
@@ -119,8 +125,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = client.data.uid as string;
-      if (!uid) throw new WsException('Not authenticated');
+      const uid = this.getUid(client);
       const chats = await this.chatsService.getChats(uid);
       client.emit('chats', chats);
     } catch (err) {
@@ -141,8 +146,6 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = client.data.uid as string;
-      if (!uid) throw new WsException('Not authenticated');
       const result = await this.chatsService.getUser(data.username);
       client.emit('userSearch', { ...result });
     } catch (err) {
@@ -160,8 +163,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = client.data.uid as string;
-      if (!uid) throw new WsException('Not authenticated');
+      const uid = this.getUid(client);
 
       const dto = plainToInstance(CreateChatDto, data);
       await validateOrReject(dto);
@@ -194,8 +196,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = client.data.uid as string;
-      if (!uid) throw new WsException('Not authenticated');
+      const uid = this.getUid(client);
       await this.chatsService.assertMember(data.chatId, uid);
       await client.join(data.chatId);
       this.roomMemberCount.set(
@@ -240,8 +241,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = client.data.uid as string;
-      if (!uid) throw new WsException('Not authenticated');
+      const uid = this.getUid(client);
       const messages = await this.chatsService.getMessages(
         data.chatId,
         data.page,
@@ -266,8 +266,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = client.data.uid as string;
-      if (!uid) throw new WsException('Not authenticated');
+      const uid = this.getUid(client);
       const result = await this.chatsService.delete(data.chatId, uid);
 
       this.emitToUserRooms('chatDeleted', result, result.participantUids ?? []);
@@ -289,8 +288,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = client.data.uid as string;
-      if (!uid) throw new WsException('Not authenticated');
+      const uid = this.getUid(client);
 
       const dto = plainToInstance(AddMembersDto, data);
       await validateOrReject(dto);
@@ -322,8 +320,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const senderId = client.data.uid as string;
-      if (!senderId) throw new WsException('Not authenticated');
+      const senderId = this.getUid(client);
       if (!this.checkThrottle(client.id, 20, 10000)) {
         throw new WsException('Rate limit exceeded');
       }
@@ -361,8 +358,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = client.data.uid as string;
-      if (!uid) throw new WsException('Not authenticated');
+      const uid = this.getUid(client);
       const readMessages = await this.chatsService.markRead(data.chatId, uid);
       if (readMessages.length > 0) {
         this.server.to(data.chatId).emit('messagesRead', {
