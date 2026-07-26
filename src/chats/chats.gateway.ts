@@ -30,6 +30,27 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(ChatsGateway.name);
 
   private uidToSocketId = new Map<string, Set<string>>();
+  private roomMemberCount = new Map<string, number>();
+  private socketThrottle = new Map<
+    string,
+    { count: number; resetAt: number }
+  >();
+
+  private checkThrottle(
+    socketId: string,
+    limit = 30,
+    windowMs = 10000,
+  ): boolean {
+    const now = Date.now();
+    const entry = this.socketThrottle.get(socketId);
+    if (!entry || now > entry.resetAt) {
+      this.socketThrottle.set(socketId, { count: 1, resetAt: now + windowMs });
+      return true;
+    }
+    if (entry.count >= limit) return false;
+    entry.count++;
+    return true;
+  }
 
   constructor(
     private chatsService: ChatsService,
@@ -73,10 +94,15 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (sockets.size === 0) this.uidToSocketId.delete(uid);
       }
     }
+    this.socketThrottle.delete(client.id);
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  private emitToUserRooms(event: string, data: unknown, participantUids: string[]) {
+  private emitToUserRooms(
+    event: string,
+    data: unknown,
+    participantUids: string[],
+  ) {
     for (const uid of participantUids) {
       const socketIds = this.uidToSocketId.get(uid);
       if (socketIds) {
@@ -93,10 +119,15 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = this.verifyClient(client);
+      const uid = client.data.uid as string;
+      if (!uid) throw new WsException('Not authenticated');
       const chats = await this.chatsService.getChats(uid);
       client.emit('chats', chats);
-    } catch {
+    } catch (err) {
+      this.logger.error(
+        `getChats error: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
       client.emit('error', {
         event: 'getChats',
         message: 'Failed to load chats',
@@ -110,10 +141,15 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      this.verifyClient(client);
+      const uid = client.data.uid as string;
+      if (!uid) throw new WsException('Not authenticated');
       const result = await this.chatsService.getUser(data.username);
       client.emit('userSearch', { ...result });
-    } catch {
+    } catch (err) {
+      this.logger.error(
+        `getUser error: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
       client.emit('userSearch', { userExists: false });
     }
   }
@@ -124,7 +160,8 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = this.verifyClient(client);
+      const uid = client.data.uid as string;
+      if (!uid) throw new WsException('Not authenticated');
 
       const dto = plainToInstance(CreateChatDto, data);
       await validateOrReject(dto);
@@ -140,7 +177,10 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       );
       this.emitToUserRooms('chatCreated', newChat, participantUids);
     } catch (err) {
-      this.logger.error(`createChat error: ${(err as Error).message}`, (err as Error).stack);
+      this.logger.error(
+        `createChat error: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
       client.emit('error', {
         event: 'createChat',
         message: 'Failed to create chat',
@@ -154,11 +194,25 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      this.verifyClient(client);
+      const uid = client.data.uid as string;
+      if (!uid) throw new WsException('Not authenticated');
+      await this.chatsService.assertMember(data.chatId, uid);
       await client.join(data.chatId);
-      const messages = await this.chatsService.getMessages(data.chatId, data.page);
+      this.roomMemberCount.set(
+        data.chatId,
+        (this.roomMemberCount.get(data.chatId) ?? 0) + 1,
+      );
+      const messages = await this.chatsService.getMessages(
+        data.chatId,
+        data.page,
+        uid,
+      );
       client.emit('messages', messages);
-    } catch {
+    } catch (err) {
+      this.logger.error(
+        `joinChat error: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
       client.emit('error', {
         event: 'joinChat',
         message: 'Failed to join chat',
@@ -172,6 +226,12 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     await client.leave(data.chatId);
+    const count = this.roomMemberCount.get(data.chatId);
+    if (count && count > 1) {
+      this.roomMemberCount.set(data.chatId, count - 1);
+    } else {
+      this.roomMemberCount.delete(data.chatId);
+    }
   }
 
   @SubscribeMessage('loadMoreMessages')
@@ -180,10 +240,19 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      this.verifyClient(client);
-      const messages = await this.chatsService.getMessages(data.chatId, data.page);
+      const uid = client.data.uid as string;
+      if (!uid) throw new WsException('Not authenticated');
+      const messages = await this.chatsService.getMessages(
+        data.chatId,
+        data.page,
+        uid,
+      );
       client.emit('moreMessages', messages);
-    } catch {
+    } catch (err) {
+      this.logger.error(
+        `loadMoreMessages error: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
       client.emit('error', {
         event: 'loadMoreMessages',
         message: 'Failed to load messages',
@@ -197,17 +266,20 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = this.verifyClient(client);
+      const uid = client.data.uid as string;
+      if (!uid) throw new WsException('Not authenticated');
       const result = await this.chatsService.delete(data.chatId, uid);
 
-      const roomSockets = await this.server.in(data.chatId).fetchSockets();
-      const participantUids = [
-        ...new Set(roomSockets.map((s) => s.data.uid as string).filter(Boolean)),
-      ];
-      this.emitToUserRooms('chatDeleted', result, participantUids);
+      this.emitToUserRooms('chatDeleted', result, result.participantUids ?? []);
     } catch (err) {
-      this.logger.error(`deleteChat error: ${(err as Error).message}`, (err as Error).stack);
-      client.emit('error', { event: 'deleteChat', message: 'Failed to delete chat' });
+      this.logger.error(
+        `deleteChat error: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+      client.emit('error', {
+        event: 'deleteChat',
+        message: 'Failed to delete chat',
+      });
     }
   }
 
@@ -217,19 +289,30 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = this.verifyClient(client);
+      const uid = client.data.uid as string;
+      if (!uid) throw new WsException('Not authenticated');
 
       const dto = plainToInstance(AddMembersDto, data);
       await validateOrReject(dto);
 
-      const chat = await this.chatsService.addMembers(data.chatId, data.members, uid);
+      const chat = await this.chatsService.addMembers(
+        data.chatId,
+        data.members,
+        uid,
+      );
       const participantUids = chat.participants.map(
         (p: { user: { uid: string } }) => p.user.uid,
       );
       this.emitToUserRooms('memberAdded', chat, participantUids);
     } catch (err) {
-      this.logger.error(`addMember error: ${(err as Error).message}`, (err as Error).stack);
-      client.emit('error', { event: 'addMember', message: 'Failed to add member' });
+      this.logger.error(
+        `addMember error: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+      client.emit('error', {
+        event: 'addMember',
+        message: 'Failed to add member',
+      });
     }
   }
 
@@ -239,7 +322,11 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const senderId = this.verifyClient(client);
+      const senderId = client.data.uid as string;
+      if (!senderId) throw new WsException('Not authenticated');
+      if (!this.checkThrottle(client.id, 20, 10000)) {
+        throw new WsException('Rate limit exceeded');
+      }
       const message = await this.chatsService.sendMessage(
         data.chatId,
         senderId,
@@ -249,8 +336,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         .to(data.chatId)
         .emit('newMessage', { ...message, chatId: data.chatId });
 
-      const socketsInRoom = (await this.server.in(data.chatId).fetchSockets())
-        .length;
+      const socketsInRoom = this.roomMemberCount.get(data.chatId) ?? 0;
       if (socketsInRoom > 1) {
         this.server.to(data.chatId).emit('messageStatus', {
           messageId: message.id,
@@ -258,7 +344,10 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
       }
     } catch (err) {
-      this.logger.error(`sendMessage error: ${(err as Error).message}`, (err as Error).stack);
+      this.logger.error(
+        `sendMessage error: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
       client.emit('error', {
         event: 'sendMessage',
         message: 'Failed to send message',
@@ -272,7 +361,8 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = this.verifyClient(client);
+      const uid = client.data.uid as string;
+      if (!uid) throw new WsException('Not authenticated');
       const readMessages = await this.chatsService.markRead(data.chatId, uid);
       if (readMessages.length > 0) {
         this.server.to(data.chatId).emit('messagesRead', {
@@ -282,7 +372,10 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
       }
     } catch (err) {
-      this.logger.error(`markRead error: ${(err as Error).message}`, (err as Error).stack);
+      this.logger.error(
+        `markRead error: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
     }
   }
 }

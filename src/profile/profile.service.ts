@@ -64,7 +64,8 @@ export class ProfileService {
       if (error instanceof HttpException) {
         throw error;
       }
-      const driverError = (error as { driverError?: { code?: string } }).driverError;
+      const driverError = (error as { driverError?: { code?: string } })
+        .driverError;
       if (driverError?.code === '23505') {
         throw new ConflictException('Username already exists');
       }
@@ -90,12 +91,13 @@ export class ProfileService {
     try {
       const profile = await this.findUserById(uid);
 
-      if (dto.userName) {
-        dto['username'] = dto.userName.toLowerCase().replace(/\s+/g, '-');
-        delete dto.userName;
-      }
-
-      Object.assign(profile, dto);
+      if (dto.firstName !== undefined) profile.firstName = dto.firstName;
+      if (dto.lastName !== undefined) profile.lastName = dto.lastName;
+      if (dto.userName !== undefined)
+        profile.username = dto.userName.toLowerCase().replace(/\s+/g, '-');
+      if (dto.bio !== undefined) profile.bio = dto.bio;
+      if (dto.location !== undefined) profile.location = dto.location;
+      if (dto.avatarUrl !== undefined) profile.avatarUrl = dto.avatarUrl;
 
       if (avatar) {
         avatar.filename = `${Date.now()}-${uid}`;
@@ -106,7 +108,8 @@ export class ProfileService {
       return this.profileRepository.save(profile);
     } catch (error) {
       if (error instanceof HttpException) throw error;
-      const driverError = (error as { driverError?: { code?: string } }).driverError;
+      const driverError = (error as { driverError?: { code?: string } })
+        .driverError;
       if (driverError?.code === '23505') {
         throw new ConflictException('Username already exists');
       }

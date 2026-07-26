@@ -41,7 +41,12 @@ describe('AuthController', () => {
   describe('login', () => {
     it('delegates to authService.login', async () => {
       const dto = { uid: 'u1' };
-      authService.login.mockResolvedValue({ uid: 'u1', email: 'a@b.com', access_token: 't', refresh_token: 't' });
+      authService.login.mockResolvedValue({
+        uid: 'u1',
+        email: 'a@b.com',
+        access_token: 't',
+        refresh_token: 't',
+      });
 
       const result = await controller.login(dto);
 
@@ -53,7 +58,10 @@ describe('AuthController', () => {
   describe('refresh', () => {
     it('delegates to authService.refreshToken', async () => {
       const req = { user: { userId: 'uid1' } } as any;
-      authService.refreshToken.mockResolvedValue({ access_token: 't', refresh_token: 't' });
+      authService.refreshToken.mockResolvedValue({
+        access_token: 't',
+        refresh_token: 't',
+      });
 
       const result = await controller.refresh(req);
 
@@ -64,7 +72,9 @@ describe('AuthController', () => {
 
   describe('logout', () => {
     it('delegates to authService.logout', () => {
-      authService.logout.mockReturnValue({ message: 'Logged out successfully' });
+      authService.logout.mockReturnValue({
+        message: 'Logged out successfully',
+      });
 
       const result = controller.logout();
 

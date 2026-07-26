@@ -9,23 +9,38 @@ import { CreateUserDto } from '../user/dto/create-user.dto';
 import { UserService } from 'src/user/user.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, LessThan } from 'typeorm';
 import { LoginDto } from './dto/login.dto';
+import { RevokedToken } from './entities/revoked-token.entity';
 import * as admin from 'firebase-admin';
 import { randomBytes } from 'crypto';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private tokenBlacklist = new Set<string>();
 
   constructor(
     private userService: UserService,
     private jwtService: JwtService,
     private configService: ConfigService,
-  ) {}
+    @InjectRepository(RevokedToken)
+    private revokedTokenRepository: Repository<RevokedToken>,
+  ) {
+    this.cleanExpiredTokens();
+  }
+
+  private async cleanExpiredTokens() {
+    try {
+      await this.revokedTokenRepository.delete({
+        expiresAt: LessThan(new Date()),
+      });
+    } catch {}
+  }
 
   private async getTokens(uid: string) {
     const jti = randomBytes(16).toString('hex');
+    const refreshExpiresIn = '7d';
     const [access_token, refresh_token] = await Promise.all([
       this.jwtService.signAsync(
         { sub: uid, type: 'access' },
@@ -38,11 +53,11 @@ export class AuthService {
         { sub: uid, type: 'refresh', jti },
         {
           secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-          expiresIn: '7d',
+          expiresIn: refreshExpiresIn,
         },
       ),
     ]);
-    return { access_token, refresh_token };
+    return { access_token, refresh_token, jti };
   }
 
   async register(createUserDto: CreateUserDto) {
@@ -77,15 +92,34 @@ export class AuthService {
 
   async refreshToken(uid: string, oldRefreshJti?: string) {
     if (oldRefreshJti) {
-      if (this.tokenBlacklist.has(oldRefreshJti)) {
+      const revoked = await this.revokedTokenRepository.findOne({
+        where: { jti: oldRefreshJti },
+      });
+      if (revoked) {
         throw new UnauthorizedException('Refresh token has been revoked');
       }
-      this.tokenBlacklist.add(oldRefreshJti);
     }
-    return this.getTokens(uid);
+    const tokens = await this.getTokens(uid);
+    if (oldRefreshJti) {
+      await this.revokedTokenRepository
+        .save({
+          jti: oldRefreshJti,
+          uid,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        })
+        .catch(() => {});
+    }
+    return tokens;
   }
 
-  logout() {
+  async logout(uid: string, refreshJti: string) {
+    await this.revokedTokenRepository
+      .save({
+        jti: refreshJti,
+        uid,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      })
+      .catch(() => {});
     return { message: 'Logged out successfully' };
   }
 }

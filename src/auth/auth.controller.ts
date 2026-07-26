@@ -1,11 +1,19 @@
-import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req, Res } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
+
+const REFRESH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  path: '/auth',
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+};
 
 @Controller('auth')
 export class AuthController {
@@ -13,28 +21,46 @@ export class AuthController {
 
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('register')
-  register(@Body() createUserDto: CreateUserDto) {
-    return this.authService.register(createUserDto);
+  async register(
+    @Body() createUserDto: CreateUserDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.register(createUserDto);
+    res.cookie('refresh_token', result.refresh_token, REFRESH_COOKIE_OPTIONS);
+    return result;
   }
 
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Post('login')
-  login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.login(loginDto);
+    res.cookie('refresh_token', result.refresh_token, REFRESH_COOKIE_OPTIONS);
+    return result;
   }
 
-  /** Uses the refresh token (sent as Bearer) to issue a new token pair. */
+  /** Issues a new token pair. Accepts refresh token via Bearer header or httpOnly cookie. */
   @UseGuards(RefreshTokenGuard)
   @Post('refresh')
-  refresh(@Req() req: Request) {
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const user = req['user'] as { userId: string; jti?: string };
-    return this.authService.refreshToken(user.userId, user.jti);
+    const result = await this.authService.refreshToken(user.userId, user.jti);
+    res.cookie('refresh_token', result.refresh_token, REFRESH_COOKIE_OPTIONS);
+    return result;
   }
 
-  /** Signs the user out. */
-  @UseGuards(JwtAuthGuard)
+  /** Signs the user out — revokes the refresh token. */
+  @UseGuards(RefreshTokenGuard)
   @Post('logout')
-  logout() {
-    return this.authService.logout();
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const user = req['user'] as { userId: string; jti?: string };
+    const result = await this.authService.logout(user.userId, user.jti ?? '');
+    res.clearCookie('refresh_token', { path: '/auth' });
+    return result;
   }
 }

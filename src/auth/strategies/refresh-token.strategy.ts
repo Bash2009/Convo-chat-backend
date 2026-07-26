@@ -10,6 +10,10 @@ interface JwtPayload {
   type?: string;
 }
 
+function extractJwtFromCookie(req: Request): string | null {
+  return req.cookies?.refresh_token ?? null;
+}
+
 @Injectable()
 export class RefreshTokenStrategy extends PassportStrategy(
   Strategy,
@@ -25,7 +29,10 @@ export class RefreshTokenStrategy extends PassportStrategy(
     }
 
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: (req: Request) => {
+        const headerToken = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+        return headerToken ?? extractJwtFromCookie(req);
+      },
       secretOrKey: refreshSecret,
       passReqToCallback: true,
     });
@@ -33,7 +40,8 @@ export class RefreshTokenStrategy extends PassportStrategy(
 
   validate(req: Request, payload: JwtPayload) {
     const authHeader = req.get('Authorization');
-    const refreshToken = authHeader?.split(' ')[1] ?? null;
+    const refreshToken =
+      authHeader?.split(' ')[1] ?? req.cookies?.refresh_token ?? null;
 
     return {
       userId: payload.sub,

@@ -43,9 +43,7 @@ export class AddDatabaseIndexes1785000000000 implements MigrationInterface {
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_message_chat_status"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_chat_member_chat_id"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_chat_member_user_uid"`);
-    await queryRunner.query(
-      `DROP INDEX IF EXISTS "idx_chat_member_chat_user"`,
-    );
+    await queryRunner.query(`DROP INDEX IF EXISTS "idx_chat_member_chat_user"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_profiles_user_uid"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_users_email"`);
   }

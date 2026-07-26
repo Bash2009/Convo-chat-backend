@@ -2,12 +2,22 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
+import compression from 'compression';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  app.use(helmet()); 
+  app.use(helmet());
+  app.use(cookieParser());
+  app.use(compression());
+  app.use((req, res, next) => {
+    if (req.method === 'GET') {
+      res.setHeader('Cache-Control', 'private, max-age=60');
+    }
+    next();
+  });
 
   app.enableCors({
     origin: [
@@ -36,6 +46,9 @@ async function bootstrap() {
 
 bootstrap().catch((err) => {
   const logger = new Logger('Bootstrap');
-  logger.error(`Failed to start application: ${(err as Error).message}`, (err as Error).stack);
+  logger.error(
+    `Failed to start application: ${(err as Error).message}`,
+    (err as Error).stack,
+  );
   process.exit(1);
 });

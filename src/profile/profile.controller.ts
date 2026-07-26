@@ -18,6 +18,7 @@ import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -35,8 +36,11 @@ const avatarFilePipe = new ParseFilePipe({
 export class ProfileController {
   constructor(private readonly profileService: ProfileService) {}
 
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('create')
-  @UseInterceptors(FileInterceptor('avatar', { limits: { fileSize: MAX_AVATAR_SIZE } }))
+  @UseInterceptors(
+    FileInterceptor('avatar', { limits: { fileSize: MAX_AVATAR_SIZE } }),
+  )
   create(
     @Req() req: Request,
     @Body() createProfileDto: CreateProfileDto,
@@ -46,8 +50,11 @@ export class ProfileController {
     return this.profileService.create(uid, createProfileDto, avatar);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Patch('update')
-  @UseInterceptors(FileInterceptor('avatar', { limits: { fileSize: MAX_AVATAR_SIZE } }))
+  @UseInterceptors(
+    FileInterceptor('avatar', { limits: { fileSize: MAX_AVATAR_SIZE } }),
+  )
   update(
     @Req() req: Request,
     @Body() dto: UpdateProfileDto,

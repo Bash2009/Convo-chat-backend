@@ -20,8 +20,18 @@ export class ChatsController {
   constructor(private chatService: ChatsService) {}
 
   @Post()
-  create(@Body() createChatDto: CreateChatDto) {
-    return this.chatService.create(createChatDto);
+  create(@Body() createChatDto: CreateChatDto, @Req() req: Request) {
+    const user = req['user'] as { userId: string };
+    const uid = user.userId;
+    const members = createChatDto.members ?? [];
+    if (!members.includes(uid)) {
+      members.push(uid);
+    }
+    return this.chatService.create({
+      ...createChatDto,
+      members,
+      admin: createChatDto.admin ?? uid,
+    });
   }
 
   @Delete(':id')

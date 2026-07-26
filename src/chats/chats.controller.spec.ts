@@ -58,7 +58,11 @@ describe('ChatsController', () => {
       const result = await controller.addMembers('chat-id', body, req);
 
       expect(result.id).toBe('chat-id');
-      expect(service.addMembers).toHaveBeenCalledWith('chat-id', ['uid3'], 'uid1');
+      expect(service.addMembers).toHaveBeenCalledWith(
+        'chat-id',
+        ['uid3'],
+        'uid1',
+      );
     });
   });
 });

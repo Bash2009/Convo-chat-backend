@@ -4,9 +4,11 @@ import { AuthController } from './auth.controller';
 import { UserModule } from 'src/user/user.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService, ConfigModule } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
 import { FirebaseModule } from 'src/firebase/firebase.module';
+import { RevokedToken } from './entities/revoked-token.entity';
 
 @Module({
   controllers: [AuthController],
@@ -14,6 +16,7 @@ import { FirebaseModule } from 'src/firebase/firebase.module';
   imports: [
     UserModule,
     FirebaseModule,
+    TypeOrmModule.forFeature([RevokedToken]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
