@@ -15,28 +15,28 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import type { Request } from 'express';
 
 @UseGuards(JwtAuthGuard)
-@Controller()
+@Controller('chats')
 export class ChatsController {
   constructor(private chatService: ChatsService) {}
 
-  @Post('create')
+  @Post()
   create(@Body() createChatDto: CreateChatDto) {
     return this.chatService.create(createChatDto);
   }
 
-  @Delete('chats/:id')
+  @Delete(':id')
   async delete(@Param('id') id: string, @Req() req: Request) {
-    const uid = req['user'] as { userId: string };
-    return this.chatService.delete(id, uid.userId);
+    const user = req['user'] as { userId: string };
+    return this.chatService.delete(id, user.userId);
   }
 
-  @Patch('chats/:id/members')
+  @Patch(':id/members')
   async addMembers(
     @Param('id') id: string,
     @Body() dto: AddMembersDto,
     @Req() req: Request,
   ) {
-    const uid = req['user'] as { userId: string };
-    return this.chatService.addMembers(id, dto.members, uid.userId);
+    const user = req['user'] as { userId: string };
+    return this.chatService.addMembers(id, dto.members, user.userId);
   }
 }

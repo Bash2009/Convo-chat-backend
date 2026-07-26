@@ -3,16 +3,20 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 import { UserService } from 'src/user/user.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { LoginDto } from './dto/login.dto';
+import * as admin from 'firebase-admin';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private tokenBlacklist = new Set<string>();
 
   constructor(
     private userService: UserService,
@@ -20,18 +24,18 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
-  // Returns [access_token, refresh_token]
   private async getTokens(uid: string) {
+    const jti = randomBytes(16).toString('hex');
     const [access_token, refresh_token] = await Promise.all([
       this.jwtService.signAsync(
-        { sub: uid },
+        { sub: uid, type: 'access' },
         {
           secret: this.configService.get<string>('JWT_SECRET'),
           expiresIn: '15m',
         },
       ),
       this.jwtService.signAsync(
-        { sub: uid },
+        { sub: uid, type: 'refresh', jti },
         {
           secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
           expiresIn: '7d',
@@ -56,18 +60,31 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
+    try {
+      const decoded = await admin.auth().verifyIdToken(loginDto.firebaseToken);
+      if (decoded.uid !== loginDto.uid) {
+        throw new UnauthorizedException('Token UID mismatch');
+      }
+    } catch {
+      throw new UnauthorizedException('Invalid Firebase ID token');
+    }
+
     const user = await this.userService.findOneById(loginDto.uid);
     if (!user) throw new BadRequestException('User not found');
     const tokens = await this.getTokens(user.uid);
     return { ...user, ...tokens };
   }
 
-  async refreshToken(uid: string) {
+  async refreshToken(uid: string, oldRefreshJti?: string) {
+    if (oldRefreshJti) {
+      if (this.tokenBlacklist.has(oldRefreshJti)) {
+        throw new UnauthorizedException('Refresh token has been revoked');
+      }
+      this.tokenBlacklist.add(oldRefreshJti);
+    }
     return this.getTokens(uid);
   }
 
-  /** Stateless logout — tokens are short-lived so no server-side blacklist needed.
-   *  The client discards both tokens; this endpoint exists for a clean API surface. */
   logout() {
     return { message: 'Logged out successfully' };
   }

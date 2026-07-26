@@ -25,9 +25,22 @@ export class ProfileService {
   async create(
     uid: string,
     createProfileDto: CreateProfileDto,
-    avatar: Express.Multer.File,
+    avatar?: Express.Multer.File,
   ) {
     try {
+      const user = await this.userService.findOneById(uid);
+      if (!user) {
+        throw new NotFoundException(`User with ID ${uid} not found`);
+      }
+
+      const existingProfile = await this.profileRepository.findOne({
+        where: { user: { uid } },
+      });
+
+      if (existingProfile) {
+        throw new ConflictException('Profile already exists for this user');
+      }
+
       if (avatar) {
         avatar.filename = `${Date.now()}-${uid}`;
         const avatarUpload = await this.cloudinaryService
@@ -39,25 +52,11 @@ export class ProfileService {
           });
         createProfileDto.avatarUrl = (avatarUpload as { url: string }).url;
       }
-      // Check if user exists
-      const user = await this.userService.findOneById(uid);
-      if (!user) {
-        throw new NotFoundException(`User with ID ${uid} not found`);
-      }
-
-      // Check if profile already exists for this user
-      const existingProfile = await this.profileRepository.findOne({
-        where: { user: { uid } },
-      });
-
-      if (existingProfile) {
-        throw new ConflictException('Profile already exists for this user');
-      }
 
       const userProfile = this.profileRepository.create({
         ...createProfileDto,
-        username: createProfileDto.userName.toLowerCase().replace(/\s+/g, '-'), // Generate uniqueName from userName
-        user: user, // Associate the profile with the user
+        username: createProfileDto.userName.toLowerCase().replace(/\s+/g, '-'),
+        user: user,
       });
       await this.profileRepository.save(userProfile);
       return userProfile;
@@ -91,18 +90,19 @@ export class ProfileService {
     try {
       const profile = await this.findUserById(uid);
 
-      if (avatar) {
-        avatar.filename = `${Date.now()}-${uid}`;
-        const upload = await this.cloudinaryService.uploadImage(avatar);
-        dto.avatarUrl = (upload as { url: string }).url;
-      }
-
       if (dto.userName) {
         dto['username'] = dto.userName.toLowerCase().replace(/\s+/g, '-');
         delete dto.userName;
       }
 
       Object.assign(profile, dto);
+
+      if (avatar) {
+        avatar.filename = `${Date.now()}-${uid}`;
+        const upload = await this.cloudinaryService.uploadImage(avatar);
+        profile.avatarUrl = (upload as { url: string }).url;
+      }
+
       return this.profileRepository.save(profile);
     } catch (error) {
       if (error instanceof HttpException) throw error;

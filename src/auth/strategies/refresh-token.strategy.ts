@@ -6,7 +6,8 @@ import { Request } from 'express';
 
 interface JwtPayload {
   sub: string;
-  email?: string;
+  jti?: string;
+  type?: string;
 }
 
 @Injectable()
@@ -34,6 +35,11 @@ export class RefreshTokenStrategy extends PassportStrategy(
     const authHeader = req.get('Authorization');
     const refreshToken = authHeader?.split(' ')[1] ?? null;
 
-    return { userId: payload.sub, email: payload.email ?? null, refreshToken };
+    return {
+      userId: payload.sub,
+      jti: payload.jti ?? null,
+      type: payload.type ?? null,
+      refreshToken,
+    };
   }
 }

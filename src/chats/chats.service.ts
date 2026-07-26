@@ -1,19 +1,24 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { ProfileService } from 'src/profile/profile.service';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, Not, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Chat } from './entities/chat.entity';
 import { ChatMember } from './entities/chat-members.entity';
 import { Message } from './entities/messages.entity';
 import { User } from 'src/user/entities/user.entity';
 
+const MESSAGES_PAGE_SIZE = 50;
+
 @Injectable()
 export class ChatsService {
+  private readonly logger = new Logger(ChatsService.name);
+
   constructor(
     private profileService: ProfileService,
     private dataSource: DataSource,
@@ -25,16 +30,13 @@ export class ChatsService {
     private messageRepository: Repository<Message>,
   ) {}
 
-  // ── Create chat ──────────────────────────────────────────────────────────
   async create(createChatDto: CreateChatDto) {
     const { isGroup, members, name, admin } = createChatDto;
 
-    // Deduplicate member UIDs (admin may already be in members list)
     const allUids = [
       ...new Set([...(members ?? []), ...(admin ? [admin] : [])]),
     ];
 
-    // If it's a private chat, return existing one instead of creating a duplicate
     if (!isGroup) {
       const existing = await this.findExistingPrivateChat(allUids);
       if (existing) return this.getChatById(existing.id);
@@ -45,7 +47,6 @@ export class ChatsService {
     await queryRunner.startTransaction();
 
     try {
-
       const users = await queryRunner.manager.findBy(User, {
         uid: In(allUids),
       });
@@ -68,20 +69,18 @@ export class ChatsService {
       );
 
       await queryRunner.manager.save(ChatMember, memberEntities);
-      await queryRunner.commitTransaction();
 
-      // Return a fully populated chat object for the broadcast
-      return this.getChatById(savedChat.id);
+      const newChat = await this.getChatById(savedChat.id);
+      await queryRunner.commitTransaction();
+      return newChat;
     } catch (err) {
       await queryRunner.rollbackTransaction();
-      console.error('createChat error:', err);
+      this.logger.error(`createChat error: ${(err as Error).message}`, (err as Error).stack);
       throw err;
     } finally {
       await queryRunner.release();
     }
   }
-
-  // ── Delete a chat ──────────────────────────────────────────────────────────
 
   async delete(chatId: string, requesterUid: string) {
     const chat = await this.chatRepository.findOne({
@@ -97,8 +96,6 @@ export class ChatsService {
     await this.chatRepository.remove(chat);
     return { id: chatId, deleted: true };
   }
-
-  // ── Add members to a group chat ───────────────────────────────────────────
 
   async addMembers(chatId: string, newUids: string[], requesterUid: string) {
     const chat = await this.chatRepository.findOne({
@@ -133,12 +130,11 @@ export class ChatsService {
     return this.getChatById(chatId);
   }
 
-  // ── Get all chats for a user ─────────────────────────────────────────────
-
   async getChats(uid: string) {
     const members = await this.chatMemberRepository.find({
       where: { user: { uid } },
       relations: { chat: { members: { user: { profile: true } } } },
+      take: 100,
     });
 
     return members.map(({ chat, unreadCount }) =>
@@ -146,25 +142,24 @@ export class ChatsService {
     );
   }
 
-  // ── Get a single chat by id ──────────────────────────────────────────────
-
   async getChatById(chatId: string) {
-    const chat = await this.chatRepository.findOneOrFail({
+    const chat = await this.chatRepository.findOne({
       where: { id: chatId },
       relations: { members: { user: { profile: true } } },
     });
+    if (!chat) throw new NotFoundException('Chat not found');
     return this.formatChat(chat, 0);
   }
 
-  // ── Get messages for a chat room ─────────────────────────────────────────
-
-  async getMessages(chatId: string) {
+  async getMessages(chatId: string, page = 0) {
     const messages = await this.messageRepository.find({
       where: { chatId },
-      order: { createdAt: 'ASC' },
+      order: { createdAt: 'DESC' },
+      take: MESSAGES_PAGE_SIZE,
+      skip: page * MESSAGES_PAGE_SIZE,
     });
 
-    return messages.map((m) => ({
+    return messages.reverse().map((m) => ({
       id: m.id,
       senderId: m.senderId,
       text: m.content,
@@ -172,8 +167,6 @@ export class ChatsService {
       status: m.status,
     }));
   }
-
-  // ── Send a message ────────────────────────────────────────────────────────
 
   async sendMessage(chatId: string, senderId: string, text: string) {
     const message = this.messageRepository.create({
@@ -185,7 +178,6 @@ export class ChatsService {
 
     const saved = await this.messageRepository.save(message);
 
-    // Update denormalised preview on the chat row
     await this.chatRepository.update(chatId, {
       lastMessageText: text,
       lastMessageAt: saved.createdAt,
@@ -200,16 +192,12 @@ export class ChatsService {
     };
   }
 
-  // ── Mark all messages in a chat as read for a user ───────────────────────
-
   async markRead(chatId: string, uid: string) {
-    // Update unread counter for this member
     await this.chatMemberRepository.update(
       { chatId, user: { uid } },
       { unreadCount: 0, lastReadAt: new Date() },
     );
 
-    // Mark unread messages as read (those not sent by the current user)
     await this.messageRepository
       .createQueryBuilder()
       .update(Message)
@@ -219,22 +207,18 @@ export class ChatsService {
       .andWhere('status != :status', { status: 'read' })
       .execute();
 
-    // Return ids of messages that were updated so the sender can be notified
     const updated = await this.messageRepository.find({
-      where: { chatId, status: 'read' },
+      where: { chatId, status: 'read' as const, senderId: Not(uid) },
       select: ['id', 'senderId'],
+      take: 100,
     });
 
     return updated;
   }
 
-  // ── Search user ───────────────────────────────────────────────────────────
-
   async getUser(username: string) {
     return this.profileService.findUserByName(username);
   }
-
-  // ── Find existing private chat between the given users ────────────────────
 
   private async findExistingPrivateChat(uids: string[]): Promise<Chat | null> {
     const members = await this.chatMemberRepository.find({
@@ -250,7 +234,7 @@ export class ChatsService {
     }
 
     for (const chat of candidateChats.values()) {
-      const chatUids = chat.members.map((m) => m.user.uid);
+      const chatUids = chat.members.map((m) => m.user?.uid ?? '');
       if (chatUids.length === uids.length && chatUids.every((u) => uids.includes(u))) {
         return chat;
       }
@@ -259,22 +243,20 @@ export class ChatsService {
     return null;
   }
 
-  // ── Private helper ────────────────────────────────────────────────────────
-
   private formatChat(chat: Chat, unreadCount: number) {
     return {
       id: chat.id,
       isGroup: chat.isGroup,
       name: chat.name ?? '',
       avatarUrl: chat.avatarUrl ?? '',
-      participants: chat.members.map((m) => ({
+      participants: (chat.members ?? []).map((m) => ({
         user: {
-          uid: m.user.uid,
+          uid: m.user?.uid ?? '',
           profile: {
-            firstName: m.user.profile?.firstName ?? '',
-            lastName: m.user.profile?.lastName ?? '',
-            username: m.user.profile?.username ?? '',
-            avatarUrl: m.user.profile?.avatarUrl ?? '',
+            firstName: m.user?.profile?.firstName ?? '',
+            lastName: m.user?.profile?.lastName ?? '',
+            username: m.user?.profile?.username ?? '',
+            avatarUrl: m.user?.profile?.avatarUrl ?? '',
           },
         },
       })),
