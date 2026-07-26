@@ -32,8 +32,8 @@ export class RefreshTokenStrategy extends PassportStrategy(
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     super({
       jwtFromRequest: (req: Request): string | null => {
-        const extract = ExtractJwt.fromAuthHeaderAsBearerToken();
-        const headerToken = extract(req);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        const headerToken = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
         return headerToken ?? extractJwtFromCookie(req);
       },
       secretOrKey: refreshSecret,
