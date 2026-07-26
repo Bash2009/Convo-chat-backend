@@ -34,7 +34,7 @@ export class RefreshTokenStrategy extends PassportStrategy(
       jwtFromRequest: (req: Request): string | null => {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         const headerToken = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
-        return headerToken ?? extractJwtFromCookie(req);
+        return (headerToken as string | null) ?? extractJwtFromCookie(req);
       },
       secretOrKey: refreshSecret,
       passReqToCallback: true,
