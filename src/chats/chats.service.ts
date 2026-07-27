@@ -391,11 +391,13 @@ export class ChatsService {
   // ── Private helper ────────────────────────────────────────────────────────
 
   private formatChat(chat: Chat, unreadCount: number) {
+    const adminUid = chat.members.find((m) => m.role === 'admin')?.user?.uid;
     return {
       id: chat.id,
       isGroup: chat.isGroup,
       name: chat.name ?? '',
       avatarUrl: chat.avatarUrl ?? '',
+      admin: adminUid,
       participants: chat.members.map((m) => ({
         user: {
           uid: m.user.uid,

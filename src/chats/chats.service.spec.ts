@@ -55,11 +55,14 @@ describe('ChatsService', () => {
     name: '',
     avatarUrl: '',
     lastMessageText: '',
+    lastMessageSenderId: undefined,
+    lastMessageStatus: undefined,
     lastMessageAt: null,
     createdAt: new Date(),
+    admin: undefined,
     members: [
-      { user: mockUser, unreadCount: 0 },
-      { user: mockUser2, unreadCount: 0 },
+      { user: mockUser, unreadCount: 0, role: 'member' },
+      { user: mockUser2, unreadCount: 0, role: 'member' },
     ],
   } as any;
 
