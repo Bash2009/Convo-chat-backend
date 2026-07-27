@@ -92,6 +92,7 @@ describe('ChatsService', () => {
           provide: getRepositoryToken(ChatMember),
           useValue: {
             find: jest.fn(),
+            findOne: jest.fn(),
             update: jest.fn(),
             create: jest.fn(),
             save: jest.fn(),
@@ -353,6 +354,7 @@ describe('ChatsService', () => {
 
   describe('getMessages', () => {
     it('returns mapped messages ordered by createdAt ASC', async () => {
+      chatMemberRepository.findOne.mockResolvedValue({} as any);
       const msgs = [
         {
           id: 'm1',
@@ -371,8 +373,11 @@ describe('ChatsService', () => {
       ] as Message[];
       messageRepository.find.mockResolvedValue(msgs);
 
-      const result = await service.getMessages('chat-id');
+      const result = await service.getMessages('chat-id', 'uid1');
 
+      expect(chatMemberRepository.findOne).toHaveBeenCalledWith({
+        where: { chatId: 'chat-id', user: { uid: 'uid1' } },
+      });
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({
         id: 'm1',
@@ -388,6 +393,7 @@ describe('ChatsService', () => {
 
   describe('sendMessage', () => {
     it('creates message and updates chat preview', async () => {
+      chatMemberRepository.findOne.mockResolvedValue({} as any);
       const saved = {
         id: 'm1',
         senderId: 'uid1',
@@ -398,13 +404,26 @@ describe('ChatsService', () => {
       messageRepository.create.mockReturnValue(saved);
       messageRepository.save.mockResolvedValue(saved);
 
+      const qb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue(undefined),
+      } as any;
+      dataSource.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
       const result = await service.sendMessage('chat-id', 'uid1', 'Hello');
 
       expect(result.text).toBe('Hello');
+      expect(chatMemberRepository.findOne).toHaveBeenCalledWith({
+        where: { chatId: 'chat-id', user: { uid: 'uid1' } },
+      });
       expect(chatRepository.update).toHaveBeenCalledWith('chat-id', {
         lastMessageText: 'Hello',
         lastMessageAt: saved.createdAt,
       });
+      expect(qb.execute).toHaveBeenCalled();
     });
   });
 
@@ -424,6 +443,7 @@ describe('ChatsService', () => {
         andWhere: jest.fn().mockReturnThis(),
         execute: jest.fn().mockResolvedValue(undefined),
       } as any;
+      chatMemberRepository.findOne.mockResolvedValue({} as any);
       messageRepository.createQueryBuilder.mockReturnValue(qb);
       messageRepository.find.mockResolvedValue(updatedMsgs);
 

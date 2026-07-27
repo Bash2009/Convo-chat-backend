@@ -45,7 +45,7 @@ async function bootstrap() {
     const subClient = pubClient.duplicate();
     app.useWebSocketAdapter(
       new (class extends IoAdapter {
-        createIOServer(port: number, options?: any) {
+        createIOServer(port: number, options?: Record<string, unknown>) {
           const server = super.createIOServer(port, options);
           server.adapter(createAdapter(pubClient, subClient));
           return server;

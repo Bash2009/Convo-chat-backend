@@ -7,12 +7,16 @@ import {
   BadRequestException,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { TokenBlacklistService } from './token-blacklist.service';
+
+jest.mock('uuid', () => ({ v4: () => 'fixed-jti' }));
 
 describe('AuthService', () => {
   let service: AuthService;
   let userService: jest.Mocked<UserService>;
   let jwtService: jest.Mocked<JwtService>;
   let configService: jest.Mocked<ConfigService>;
+  let tokenBlacklist: jest.Mocked<TokenBlacklistService>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -24,11 +28,15 @@ describe('AuthService', () => {
         },
         {
           provide: JwtService,
-          useValue: { signAsync: jest.fn() },
+          useValue: { signAsync: jest.fn(), verify: jest.fn() },
         },
         {
           provide: ConfigService,
           useValue: { get: jest.fn() },
+        },
+        {
+          provide: TokenBlacklistService,
+          useValue: { blacklist: jest.fn(), isBlacklisted: jest.fn() },
         },
       ],
     }).compile();
@@ -37,6 +45,7 @@ describe('AuthService', () => {
     userService = module.get(UserService);
     jwtService = module.get(JwtService);
     configService = module.get(ConfigService);
+    tokenBlacklist = module.get(TokenBlacklistService);
   });
 
   describe('register', () => {
@@ -89,12 +98,30 @@ describe('AuthService', () => {
   });
 
   describe('refreshToken', () => {
-    it('returns new tokens', async () => {
+    it('blacklists old jti and returns new tokens', async () => {
+      configService.get.mockReturnValue('secret');
+      jwtService.verify.mockReturnValue({ jti: 'old-jti' });
+      jwtService.signAsync.mockResolvedValue('new-token');
+
+      const result = await service.refreshToken('uid1', 'old-refresh-token');
+
+      expect(jwtService.verify).toHaveBeenCalledWith('old-refresh-token', {
+        secret: 'secret',
+      });
+      expect(tokenBlacklist.blacklist).toHaveBeenCalledWith('old-jti', 7 * 24 * 60 * 60);
+      expect(result).toEqual({
+        access_token: 'new-token',
+        refresh_token: 'new-token',
+      });
+    });
+
+    it('returns new tokens without blacklisting when no old token', async () => {
       configService.get.mockReturnValue('secret');
       jwtService.signAsync.mockResolvedValue('new-token');
 
       const result = await service.refreshToken('uid1');
 
+      expect(tokenBlacklist.blacklist).not.toHaveBeenCalled();
       expect(result).toEqual({
         access_token: 'new-token',
         refresh_token: 'new-token',
@@ -103,8 +130,25 @@ describe('AuthService', () => {
   });
 
   describe('logout', () => {
-    it('returns success message', () => {
-      expect(service.logout()).toEqual({ message: 'Logged out successfully' });
+    it('blacklists the access token jti', async () => {
+      configService.get.mockReturnValue('jwt-secret');
+      jwtService.verify.mockReturnValue({ jti: 'token-jti' });
+
+      const result = await service.logout('Bearer token');
+
+      expect(jwtService.verify).toHaveBeenCalledWith('Bearer token', {
+        secret: 'jwt-secret',
+      });
+      expect(tokenBlacklist.blacklist).toHaveBeenCalledWith('token-jti', 15 * 60);
+      expect(result).toEqual({ message: 'Logged out successfully' });
+    });
+
+    it('succeeds even if token is invalid', async () => {
+      jwtService.verify.mockImplementation(() => { throw new Error(); });
+
+      const result = await service.logout('invalid-token');
+
+      expect(result).toEqual({ message: 'Logged out successfully' });
     });
   });
 });

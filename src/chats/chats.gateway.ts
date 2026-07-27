@@ -40,14 +40,15 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** Verifies the JWT once on connection and caches uid on the socket.
    *  Subsequent calls use the cached value to avoid repeated signature checks. */
   private getUid(client: Socket): string {
-    if (client.data?.uid) return client.data.uid as string;
+    const data = client.data as Record<string, unknown> | undefined;
+    if (data?.uid) return data.uid as string;
     const token = client.handshake.auth?.token as string | undefined;
     if (!token) throw new WsException('Missing auth token');
     try {
       const payload = this.jwtService.verify<{ sub: string }>(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
-      client.data = { ...(client.data ?? {}), uid: payload.sub };
+      client.data = { ...((client.data ?? {}) as Record<string, unknown>), uid: payload.sub };
       return payload.sub;
     } catch {
       throw new WsException('Invalid or expired token');
