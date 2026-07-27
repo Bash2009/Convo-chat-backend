@@ -5,6 +5,12 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { RevokedToken } from './entities/revoked-token.entity';
+
+jest.mock('firebase-admin', () => ({
+  auth: jest.fn().mockReturnValue({
+    verifyIdToken: jest.fn().mockResolvedValue({ uid: 'uid1' }),
+  }),
+}));
 import {
   BadRequestException,
   InternalServerErrorException,
@@ -34,7 +40,7 @@ describe('AuthService', () => {
         },
         {
           provide: getRepositoryToken(RevokedToken),
-          useValue: { findOne: jest.fn(), save: jest.fn(), delete: jest.fn() },
+          useValue: { findOne: jest.fn(), save: jest.fn().mockResolvedValue({}), delete: jest.fn() },
         },
       ],
     }).compile();
@@ -85,7 +91,7 @@ describe('AuthService', () => {
     it('throws BadRequestException when user not found', async () => {
       userService.findOneById.mockResolvedValue(null);
 
-      await expect(service.login({ uid: 'unknown' } as any)).rejects.toThrow(
+      await expect(service.login({ uid: 'uid1', firebaseToken: 'tok' } as any)).rejects.toThrow(
         BadRequestException,
       );
     });

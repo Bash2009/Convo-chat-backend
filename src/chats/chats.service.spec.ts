@@ -141,9 +141,20 @@ describe('ChatsService', () => {
 
     it('returns existing private chat instead of creating duplicate', async () => {
       const existingChat = { ...mockChat, id: 'existing-chat', isGroup: false };
-      chatMemberRepository.find.mockResolvedValue([
-        { chat: existingChat } as ChatMember,
-      ]);
+      const qb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        having: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([{ cm_chat_id: 'existing-chat' }]),
+        subQuery: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        getQuery: jest.fn().mockReturnValue('subquery'),
+      } as any;
+      chatMemberRepository.createQueryBuilder.mockReturnValue(qb);
       chatRepository.findOne.mockResolvedValue(existingChat);
 
       const result = await service.create({
@@ -262,21 +273,23 @@ describe('ChatsService', () => {
     it('returns mapped messages ordered by createdAt ASC', async () => {
       const msgs = [
         {
-          id: 'm1',
-          senderId: 'uid1',
-          content: 'Hi',
-          createdAt: new Date(1),
-          status: 'sent' as const,
-        },
-        {
           id: 'm2',
           senderId: 'uid2',
           content: 'Hello',
           createdAt: new Date(2),
           status: 'read' as const,
         },
+        {
+          id: 'm1',
+          senderId: 'uid1',
+          content: 'Hi',
+          createdAt: new Date(1),
+          status: 'sent' as const,
+        },
       ] as Message[];
       messageRepository.find.mockResolvedValue(msgs);
+
+      chatMemberRepository.findOne.mockResolvedValue({} as any);
 
       const result = await service.getMessages('chat-id', 0, 'uid1');
 

@@ -20,28 +20,31 @@ describe('RefreshTokenStrategy', () => {
   });
 
   describe('validate', () => {
-    it('returns userId, email and refresh token', () => {
+    it('returns userId, jti, type and refresh token', () => {
       const req = {
-        get: jest.fn().mockReturnValue('Bearer my-refresh-token'),
+        headers: { authorization: 'Bearer my-refresh-token' },
+        cookies: {},
       } as any;
 
-      const result = strategy.validate(req, { sub: 'uid1', email: 'a@b.com' });
+      const result = strategy.validate(req, { sub: 'uid1', jti: 'jti1', type: 'refresh' });
 
       expect(result).toEqual({
         userId: 'uid1',
-        email: 'a@b.com',
+        jti: 'jti1',
+        type: 'refresh',
         refreshToken: 'my-refresh-token',
       });
     });
 
     it('returns null refresh token when header is missing', () => {
-      const req = { get: jest.fn().mockReturnValue(undefined) } as any;
+      const req = { headers: {}, cookies: {} } as any;
 
       const result = strategy.validate(req, { sub: 'uid1' });
 
       expect(result).toEqual({
         userId: 'uid1',
-        email: null,
+        jti: null,
+        type: null,
         refreshToken: null,
       });
     });

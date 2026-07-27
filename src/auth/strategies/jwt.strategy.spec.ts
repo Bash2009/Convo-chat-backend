@@ -25,31 +25,31 @@ describe('JwtStrategy', () => {
   });
 
   describe('validate', () => {
-    it('returns user object when user exists', async () => {
+    it('returns userId when user exists', async () => {
       userService.findOneById.mockResolvedValue({
         uid: 'uid1',
         email: 'a@b.com',
       } as any);
 
-      const result = await strategy.validate({ sub: 'uid1', email: 'a@b.com' });
+      const result = await strategy.validate({ sub: 'uid1' });
 
-      expect(result).toEqual({ userId: 'uid1', email: 'a@b.com' });
+      expect(result).toEqual({ userId: 'uid1' });
     });
 
-    it('throws UnauthorizedException when user not found', async () => {
+    it('returns userId even when user is not in DB (token is trusted)', async () => {
       userService.findOneById.mockResolvedValue(null);
 
-      await expect(strategy.validate({ sub: 'unknown' })).rejects.toThrow(
-        UnauthorizedException,
-      );
+      const result = await strategy.validate({ sub: 'unknown' });
+
+      expect(result).toEqual({ userId: 'unknown' });
     });
 
-    it('returns null email when not provided', async () => {
+    it('returns userId when email is not provided', async () => {
       userService.findOneById.mockResolvedValue({ uid: 'uid1' } as any);
 
       const result = await strategy.validate({ sub: 'uid1' });
 
-      expect(result).toEqual({ userId: 'uid1', email: null });
+      expect(result).toEqual({ userId: 'uid1' });
     });
   });
 });
