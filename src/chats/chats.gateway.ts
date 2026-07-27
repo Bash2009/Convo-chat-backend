@@ -12,7 +12,10 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ChatsService } from './chats.service';
+import { AddMembersDto } from './dto/add-members.dto';
 import { CreateChatDto } from './dto/create-chat.dto';
+import { validateOrReject } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 
 @WebSocketGateway({
   cors: {
@@ -36,10 +39,10 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const token = client.handshake.auth?.token as string | undefined;
     if (!token) throw new WsException('Missing auth token');
     try {
-      const payload = this.jwtService.verify(token, {
+      const payload = this.jwtService.verify<{ sub: string }>(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
-      return payload.sub as string;
+      return payload.sub;
     } catch {
       throw new WsException('Invalid or expired token');
     }
@@ -73,8 +76,11 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // uid is the Firebase uid which is the same as the username field sent by the client
       const chats = await this.chatsService.getChats(uid);
       client.emit('chats', chats);
-    } catch (err) {
-      client.emit('error', { event: 'getChats', message: 'Failed to load chats' });
+    } catch {
+      client.emit('error', {
+        event: 'getChats',
+        message: 'Failed to load chats',
+      });
     }
   }
 
@@ -99,13 +105,24 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     try {
       const uid = this.verifyClient(client);
-      // Ensure the creator is always a member
-      if (!data.members.includes(uid)) data.members.push(uid);
-      const newChat = await this.chatsService.create(data);
+
+      // WebSocket messages bypass NestJS ValidationPipe — validate inline
+      const dto = plainToInstance(CreateChatDto, data);
+      await validateOrReject(dto);
+
+      // Ensure the creator is always a member — copy to avoid mutating the DTO
+      const currentMembers = dto.members ?? [];
+      const members = currentMembers.includes(uid)
+        ? currentMembers
+        : [...currentMembers, uid];
+      const newChat = await this.chatsService.create({ ...dto, members });
       this.server.emit('chatCreated', newChat);
     } catch (err) {
       console.error('createChat error:', err);
-      client.emit('error', { event: 'createChat', message: 'Failed to create chat' });
+      client.emit('error', {
+        event: 'createChat',
+        message: 'Failed to create chat',
+      });
     }
   }
 
@@ -121,8 +138,11 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       await client.join(data.chatId);
       const messages = await this.chatsService.getMessages(data.chatId);
       client.emit('messages', messages);
-    } catch (err) {
-      client.emit('error', { event: 'joinChat', message: 'Failed to join chat' });
+    } catch {
+      client.emit('error', {
+        event: 'joinChat',
+        message: 'Failed to join chat',
+      });
     }
   }
 
@@ -134,6 +154,40 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     await client.leave(data.chatId);
   }
 
+  @SubscribeMessage('deleteChat')
+  async deleteChat(
+    @MessageBody() data: { chatId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const uid = this.verifyClient(client);
+      const result = await this.chatsService.delete(data.chatId, uid);
+      this.server.emit('chatDeleted', result);
+    } catch (err) {
+      console.error('deleteChat error:', err);
+      client.emit('error', { event: 'deleteChat', message: 'Failed to delete chat' });
+    }
+  }
+
+  @SubscribeMessage('addMember')
+  async addMember(
+    @MessageBody() data: { chatId: string; members: string[] },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const uid = this.verifyClient(client);
+
+      const dto = plainToInstance(AddMembersDto, data);
+      await validateOrReject(dto);
+
+      const chat = await this.chatsService.addMembers(data.chatId, data.members, uid);
+      this.server.emit('memberAdded', chat);
+    } catch (err) {
+      console.error('addMember error:', err);
+      client.emit('error', { event: 'addMember', message: 'Failed to add member' });
+    }
+  }
+
   @SubscribeMessage('sendMessage')
   async sendMessage(
     @MessageBody() data: { chatId: string; text: string },
@@ -141,10 +195,17 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     try {
       const senderId = this.verifyClient(client);
-      const message = await this.chatsService.sendMessage(data.chatId, senderId, data.text);
-      this.server.to(data.chatId).emit('newMessage', { ...message, chatId: data.chatId });
+      const message = await this.chatsService.sendMessage(
+        data.chatId,
+        senderId,
+        data.text,
+      );
+      this.server
+        .to(data.chatId)
+        .emit('newMessage', { ...message, chatId: data.chatId });
 
-      const socketsInRoom = (await this.server.in(data.chatId).fetchSockets()).length;
+      const socketsInRoom = (await this.server.in(data.chatId).fetchSockets())
+        .length;
       if (socketsInRoom > 1) {
         this.server.to(data.chatId).emit('messageStatus', {
           messageId: message.id,
@@ -153,7 +214,10 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
     } catch (err) {
       console.error('sendMessage error:', err);
-      client.emit('error', { event: 'sendMessage', message: 'Failed to send message' });
+      client.emit('error', {
+        event: 'sendMessage',
+        message: 'Failed to send message',
+      });
     }
   }
 

@@ -6,6 +6,6 @@ export class CreateUserDto {
   uid: string;
 
   @IsEmail()
-  @IsNotEmpty({message: "Email is required"})
+  @IsNotEmpty({ message: 'Email is required' })
   email: string;
 }

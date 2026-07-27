@@ -9,32 +9,10 @@ async function bootstrap() {
     origin: [
       'http://localhost:5173',
       'https://social-media-frontend-blush.vercel.app',
-      'https://social-media-frontend-bashirs-projects-4584c438.vercel.app/',
+      'https://social-media-frontend-bashirs-projects-4584c438.vercel.app',
     ],
     methods: 'GET, HEAD, PUT, PATCH, POST, DELETE',
     credentials: true,
-  });
-
-  app.use((req, res, next) => {
-    if (req.method === 'OPTIONS') {
-      res.setHeader('Access-Control-Allow-Origin', [
-        'http://localhost:5173',
-        'https://social-media-frontend-blush.vercel.app',
-        'https://social-media-frontend-bashirs-projects-4584c438.vercel.app',
-      ]);
-
-      res.setHeader(
-        'Access-Control-Allow-Methods',
-        'GET, PUT, PATCH, POST, DELETE, OPTIONS',
-      );
-
-      res.setHeader(
-        'Access-Control-Allow-Headers',
-        'Content-Type, Authorization',
-      );
-      return res.status(200).end();
-    }
-    next();
   });
 
   app.useGlobalPipes(
@@ -47,4 +25,4 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 3000);
 }
-bootstrap();
+void bootstrap();

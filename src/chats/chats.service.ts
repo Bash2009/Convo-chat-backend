@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { ProfileService } from 'src/profile/profile.service';
 import { DataSource, In, Repository } from 'typeorm';
@@ -23,17 +27,28 @@ export class ChatsService {
 
   // ── Create chat ──────────────────────────────────────────────────────────
   async create(createChatDto: CreateChatDto) {
+    const { isGroup, members, name, admin } = createChatDto;
+
+    // Deduplicate member UIDs (admin may already be in members list)
+    const allUids = [
+      ...new Set([...(members ?? []), ...(admin ? [admin] : [])]),
+    ];
+
+    // If it's a private chat, return existing one instead of creating a duplicate
+    if (!isGroup) {
+      const existing = await this.findExistingPrivateChat(allUids);
+      if (existing) return this.getChatById(existing.id);
+    }
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      const { isGroup, members, name, admin } = createChatDto;
 
-      // Deduplicate member UIDs (admin may already be in members list)
-      const allUids = [...new Set([...(members ?? []), ...(admin ? [admin] : [])])];
-
-      const users = await queryRunner.manager.findBy(User, { uid: In(allUids) });
+      const users = await queryRunner.manager.findBy(User, {
+        uid: In(allUids),
+      });
 
       const chat = queryRunner.manager.create(Chat, {
         name: name ?? null,
@@ -64,6 +79,58 @@ export class ChatsService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  // ── Delete a chat ──────────────────────────────────────────────────────────
+
+  async delete(chatId: string, requesterUid: string) {
+    const chat = await this.chatRepository.findOne({
+      where: { id: chatId },
+      relations: { members: { user: true } },
+    });
+    if (!chat) throw new NotFoundException('Chat not found');
+
+    const requesterMember = chat.members.find((m) => m.user?.uid === requesterUid);
+    if (!requesterMember) throw new ForbiddenException('Not a member of this chat');
+    if (chat.isGroup && requesterMember.role !== 'admin') throw new ForbiddenException('Only admins can delete a group chat');
+
+    await this.chatRepository.remove(chat);
+    return { id: chatId, deleted: true };
+  }
+
+  // ── Add members to a group chat ───────────────────────────────────────────
+
+  async addMembers(chatId: string, newUids: string[], requesterUid: string) {
+    const chat = await this.chatRepository.findOne({
+      where: { id: chatId },
+      relations: { members: { user: true } },
+    });
+    if (!chat) throw new NotFoundException('Chat not found');
+    if (!chat.isGroup) throw new ForbiddenException('Cannot add members to a private chat');
+
+    const requesterMember = chat.members.find((m) => m.user?.uid === requesterUid);
+    if (!requesterMember) throw new ForbiddenException('Not a member of this chat');
+    if (requesterMember.role !== 'admin') throw new ForbiddenException('Only admins can add members');
+
+    const existingUids = new Set(chat.members.map((m) => m.user.uid));
+    const toAdd = newUids.filter((u) => !existingUids.has(u));
+    if (toAdd.length === 0) return this.getChatById(chatId);
+
+    const users = await this.dataSource.manager.findBy(User, {
+      uid: In(toAdd),
+    });
+
+    const memberEntities = users.map((user) =>
+      this.chatMemberRepository.create({
+        user,
+        chat,
+        chatId: chat.id,
+        role: 'member',
+      }),
+    );
+
+    await this.chatMemberRepository.save(memberEntities);
+    return this.getChatById(chatId);
   }
 
   // ── Get all chats for a user ─────────────────────────────────────────────
@@ -165,6 +232,31 @@ export class ChatsService {
 
   async getUser(username: string) {
     return this.profileService.findUserByName(username);
+  }
+
+  // ── Find existing private chat between the given users ────────────────────
+
+  private async findExistingPrivateChat(uids: string[]): Promise<Chat | null> {
+    const members = await this.chatMemberRepository.find({
+      where: { user: { uid: In(uids) } },
+      relations: { chat: { members: { user: true } } },
+    });
+
+    const candidateChats = new Map<string, Chat>();
+    for (const m of members) {
+      if (!m.chat.isGroup) {
+        candidateChats.set(m.chat.id, m.chat);
+      }
+    }
+
+    for (const chat of candidateChats.values()) {
+      const chatUids = chat.members.map((m) => m.user.uid);
+      if (chatUids.length === uids.length && chatUids.every((u) => uids.includes(u))) {
+        return chat;
+      }
+    }
+
+    return null;
   }
 
   // ── Private helper ────────────────────────────────────────────────────────
