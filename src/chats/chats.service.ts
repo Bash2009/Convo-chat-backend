@@ -1,11 +1,12 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { ProfileService } from 'src/profile/profile.service';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, LessThan, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Chat } from './entities/chat.entity';
 import { ChatMember } from './entities/chat-members.entity';
@@ -14,6 +15,8 @@ import { User } from 'src/user/entities/user.entity';
 
 @Injectable()
 export class ChatsService {
+  private readonly logger = new Logger(ChatsService.name);
+
   constructor(
     private profileService: ProfileService,
     private dataSource: DataSource,
@@ -74,7 +77,7 @@ export class ChatsService {
       return this.getChatById(savedChat.id);
     } catch (err) {
       await queryRunner.rollbackTransaction();
-      console.error('createChat error:', err);
+      this.logger.error(`createChat error: ${(err as Error).message}`);
       throw err;
     } finally {
       await queryRunner.release();
@@ -156,14 +159,54 @@ export class ChatsService {
     return this.formatChat(chat, 0);
   }
 
+  // ── Shared membership assertion ──────────────────────────────────────────
+
+  async assertMember(chatId: string, uid: string): Promise<void> {
+    const member = await this.chatMemberRepository.findOne({
+      where: { chatId, user: { uid } },
+    });
+    if (!member) throw new ForbiddenException('Not a member of this chat');
+  }
+
   // ── Get messages for a chat room ─────────────────────────────────────────
 
-  async getMessages(chatId: string) {
+  async getMessages(chatId: string, uid: string) {
+    await this.assertMember(chatId, uid);
     const messages = await this.messageRepository.find({
       where: { chatId },
       order: { createdAt: 'ASC' },
+      take: 50,
     });
 
+    return messages.map((m) => ({
+      id: m.id,
+      senderId: m.senderId,
+      text: m.content,
+      sentAt: m.createdAt,
+      status: m.status,
+    }));
+  }
+
+  // ── Load older messages (cursor-based pagination) ────────────────────────
+
+  async loadMoreMessages(chatId: string, uid: string, before?: string) {
+    await this.assertMember(chatId, uid);
+    const query: Record<string, unknown> = { chatId };
+    if (before) {
+      const cursor = await this.messageRepository.findOne({
+        where: { id: before },
+        select: ['createdAt'],
+      });
+      if (cursor) {
+        query.createdAt = LessThan(cursor.createdAt);
+      }
+    }
+    const messages = await this.messageRepository.find({
+      where: query as any,
+      order: { createdAt: 'DESC' },
+      take: 50,
+    });
+    messages.reverse();
     return messages.map((m) => ({
       id: m.id,
       senderId: m.senderId,
@@ -176,6 +219,7 @@ export class ChatsService {
   // ── Send a message ────────────────────────────────────────────────────────
 
   async sendMessage(chatId: string, senderId: string, text: string) {
+    await this.assertMember(chatId, senderId);
     const message = this.messageRepository.create({
       chatId,
       senderId,
@@ -203,6 +247,7 @@ export class ChatsService {
   // ── Mark all messages in a chat as read for a user ───────────────────────
 
   async markRead(chatId: string, uid: string) {
+    await this.assertMember(chatId, uid);
     // Update unread counter for this member
     await this.chatMemberRepository.update(
       { chatId, user: { uid } },

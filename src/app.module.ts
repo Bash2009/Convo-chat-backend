@@ -28,11 +28,11 @@ import { ChatsModule } from './chats/chats.module';
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         logging: configService.get<string>('NODE_ENV') === 'development',
-        synchronize: false,
-        migrationsRun: true,
-        ssl: {
-          rejectUnauthorized: false,
-        },
+        synchronize: configService.get<string>('NODE_ENV') === 'development',
+        migrationsRun: configService.get<string>('NODE_ENV') === 'production',
+        // ssl: {
+        //   rejectUnauthorized: configService.get<string>('NODE_ENV') === 'production',
+        // },
       }),
     }),
     CloudinaryModule,
