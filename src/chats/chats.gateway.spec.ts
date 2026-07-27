@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { ChatsGateway } from './chats.gateway';
 import { ChatsService } from './chats.service';
 import { WsException } from '@nestjs/websockets';
+import { MessageStatus } from './entities/messages.entity';
 
 describe('ChatsGateway', () => {
   let gateway: ChatsGateway;
@@ -24,19 +25,24 @@ describe('ChatsGateway', () => {
   const emit = jest.fn();
   const to = jest.fn();
 
+  const serverIn = jest.fn();
+  const fetchSockets = jest.fn();
+
   const mockServer = () => {
     to.mockReturnValue({ emit });
+    serverIn.mockReturnValue({ fetchSockets });
     return {
       emit,
       to,
-      in: jest.fn().mockReturnThis(),
-      fetchSockets: jest.fn(),
+      in: serverIn,
     };
   };
 
   beforeEach(async () => {
     emit.mockClear();
     to.mockClear();
+    serverIn.mockClear();
+    fetchSockets.mockClear();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -50,6 +56,7 @@ describe('ChatsGateway', () => {
             delete: jest.fn(),
             addMembers: jest.fn(),
             leaveGroup: jest.fn(),
+            removeMember: jest.fn(),
             getMessages: jest.fn(),
             sendMessage: jest.fn(),
             markRead: jest.fn(),
@@ -387,13 +394,13 @@ describe('ChatsGateway', () => {
         senderId: 'uid1',
         text: 'Hi',
         sentAt: new Date(),
-        status: 'sent',
+        status: 'sent' as MessageStatus,
       };
       chatsService.sendMessage.mockResolvedValue({
         message: msg,
         unreadByUid: {},
       });
-      gateway.server.fetchSockets = jest.fn().mockResolvedValue([{}, {}]);
+      fetchSockets.mockResolvedValue([{}, {}]);
 
       const client = mockClient();
       await gateway.sendMessage({ chatId: 'c1', text: 'Hi' } as any, client);
@@ -412,13 +419,13 @@ describe('ChatsGateway', () => {
         senderId: 'uid1',
         text: 'Hi',
         sentAt: new Date(),
-        status: 'sent',
+        status: 'sent' as MessageStatus,
       };
       chatsService.sendMessage.mockResolvedValue({
         message: msg,
         unreadByUid: {},
       });
-      gateway.server.fetchSockets = jest.fn().mockResolvedValue([{}, {}]);
+      fetchSockets.mockResolvedValue([{}, {}]);
 
       const client = mockClient();
       await gateway.sendMessage({ chatId: 'c1', text: 'Hi' } as any, client);
@@ -479,24 +486,26 @@ describe('ChatsGateway', () => {
 
     it('broadcasts memberRemoved when regular member leaves', async () => {
       jwtService.verify.mockReturnValue({ sub: 'uid1' });
+      const updatedChat = {
+        id: 'c1',
+        participants: [{ user: { uid: 'uid2' } }],
+      };
       chatsService.leaveGroup.mockResolvedValue({
         action: 'removed',
         chatId: 'c1',
         uid: 'uid1',
-        memberUids: ['uid2'],
+        updatedChat,
       });
       const client = mockClient();
 
       await gateway.leaveGroup({ chatId: 'c1' } as any, client);
 
-      expect(client.emit).toHaveBeenCalledWith('memberRemoved', {
-        chatId: 'c1',
-        uid: 'uid1',
-      });
-      expect(gateway.server.emit).toHaveBeenCalledWith('memberRemoved', {
-        chatId: 'c1',
-        uid: 'uid1',
-      });
+      expect(client.emit).toHaveBeenCalledWith('memberRemoved', updatedChat);
+      expect(gateway.server.to).toHaveBeenCalledWith('user:uid2');
+      expect(gateway.server.emit).toHaveBeenCalledWith(
+        'memberRemoved',
+        updatedChat,
+      );
     });
 
     it('emits error on failure', async () => {
@@ -509,6 +518,56 @@ describe('ChatsGateway', () => {
       expect(client.emit).toHaveBeenCalledWith('error', {
         event: 'leaveGroup',
         message: 'Failed to leave group',
+      });
+    });
+  });
+
+  // ── removeMember ─────────────────────────────────────────────────────────
+
+  describe('removeMember', () => {
+    it('removes member and broadcasts memberRemoved to all participants', async () => {
+      jwtService.verify.mockReturnValue({ sub: 'uid1' });
+      const updatedChat = {
+        id: 'c1',
+        isGroup: true,
+        participants: [{ user: { uid: 'uid1' } }, { user: { uid: 'uid3' } }],
+      };
+      chatsService.removeMember.mockResolvedValue(updatedChat as any);
+      fetchSockets.mockResolvedValue([{ leave: jest.fn() }]);
+      const client = mockClient();
+
+      await gateway.removeMember(
+        { chatId: 'c1', memberUid: 'uid2' } as any,
+        client,
+      );
+
+      expect(chatsService.removeMember).toHaveBeenCalledWith(
+        'c1',
+        'uid1',
+        'uid2',
+      );
+      expect(gateway.server.to).toHaveBeenCalledWith('user:uid1');
+      expect(gateway.server.to).toHaveBeenCalledWith('user:uid3');
+      expect(gateway.server.to).toHaveBeenCalledWith('user:uid2');
+      expect(gateway.server.emit).toHaveBeenCalledWith(
+        'memberRemoved',
+        updatedChat,
+      );
+    });
+
+    it('emits error on failure', async () => {
+      jwtService.verify.mockReturnValue({ sub: 'uid1' });
+      chatsService.removeMember.mockRejectedValue(new Error('not allowed'));
+      const client = mockClient();
+
+      await gateway.removeMember(
+        { chatId: 'c1', memberUid: 'uid2' } as any,
+        client,
+      );
+
+      expect(client.emit).toHaveBeenCalledWith('error', {
+        event: 'removeMember',
+        message: 'Failed to remove member',
       });
     });
   });

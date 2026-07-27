@@ -267,18 +267,54 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           });
       } else {
         client.leave(data.chatId);
-        client.emit('memberRemoved', { chatId: data.chatId, uid });
-        for (const memberUid of result.memberUids)
-          this.server.to(`user:${memberUid}`).emit('memberRemoved', {
-            chatId: data.chatId,
-            uid,
-          });
+        client.emit('memberRemoved', result.updatedChat);
+        for (const member of result.updatedChat.participants)
+          this.server
+            .to(`user:${member.user.uid}`)
+            .emit('memberRemoved', result.updatedChat);
       }
     } catch (err) {
       this.logger.error(`leaveGroup error: ${(err as Error).message}`);
       client.emit('error', {
         event: 'leaveGroup',
         message: 'Failed to leave group',
+      });
+    }
+  }
+
+  @SubscribeMessage('removeMember')
+  async removeMember(
+    @MessageBody() data: { chatId: string; memberUid: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const requesterUid = this.getUid(client);
+      const updatedChat = await this.chatsService.removeMember(
+        data.chatId,
+        requesterUid,
+        data.memberUid,
+      );
+
+      // Force the removed member's sockets to leave the chat room
+      const removedSockets = await this.server
+        .in(`user:${data.memberUid}`)
+        .fetchSockets();
+      for (const s of removedSockets) s.leave(data.chatId);
+
+      for (const member of updatedChat.participants)
+        this.server
+          .to(`user:${member.user.uid}`)
+          .emit('memberRemoved', updatedChat);
+
+      // Also notify the removed member
+      this.server
+        .to(`user:${data.memberUid}`)
+        .emit('memberRemoved', updatedChat);
+    } catch (err) {
+      this.logger.error(`removeMember error: ${(err as Error).message}`);
+      client.emit('error', {
+        event: 'removeMember',
+        message: 'Failed to remove member',
       });
     }
   }
