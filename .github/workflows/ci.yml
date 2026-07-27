@@ -20,7 +20,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - run: npx eslint "src/**/*.ts" --ignore-pattern "*.spec.ts" --ignore-pattern "*.spec.js"
+      - run: npm run lint
 
   typecheck:
     name: Type Check

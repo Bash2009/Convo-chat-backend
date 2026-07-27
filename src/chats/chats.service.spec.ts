@@ -1,7 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ChatsService } from './chats.service';
 import { ProfileService } from '../profile/profile.service';
 import { Chat } from './entities/chat.entity';
@@ -24,13 +28,39 @@ describe('ChatsService', () => {
     manager: { create: jest.fn(), save: jest.fn(), findBy: jest.fn() },
   };
 
-  const mockUser = { uid: 'uid1', email: 'a@b.com', profile: { firstName: 'John', lastName: 'Doe', username: 'johndoe', avatarUrl: '' } } as any;
-  const mockUser2 = { uid: 'uid2', email: 'b@b.com', profile: { firstName: 'Jane', lastName: 'Doe', username: 'janedoe', avatarUrl: '' } } as any;
+  const mockUser = {
+    uid: 'uid1',
+    email: 'a@b.com',
+    profile: {
+      firstName: 'John',
+      lastName: 'Doe',
+      username: 'johndoe',
+      avatarUrl: '',
+    },
+  } as any;
+  const mockUser2 = {
+    uid: 'uid2',
+    email: 'b@b.com',
+    profile: {
+      firstName: 'Jane',
+      lastName: 'Doe',
+      username: 'janedoe',
+      avatarUrl: '',
+    },
+  } as any;
 
   const mockChat = {
-    id: 'chat-id', isGroup: false, name: '', avatarUrl: '',
-    lastMessageText: '', lastMessageAt: null, createdAt: new Date(),
-    members: [{ user: mockUser, unreadCount: 0 }, { user: mockUser2, unreadCount: 0 }],
+    id: 'chat-id',
+    isGroup: false,
+    name: '',
+    avatarUrl: '',
+    lastMessageText: '',
+    lastMessageAt: null,
+    createdAt: new Date(),
+    members: [
+      { user: mockUser, unreadCount: 0 },
+      { user: mockUser2, unreadCount: 0 },
+    ],
   } as any;
 
   beforeEach(async () => {
@@ -41,10 +71,42 @@ describe('ChatsService', () => {
       providers: [
         ChatsService,
         { provide: ProfileService, useValue: { findUserByName: jest.fn() } },
-        { provide: DataSource, useValue: { createQueryRunner: jest.fn().mockReturnValue(queryRunnerMock), manager: { findBy: jest.fn() } } },
-        { provide: getRepositoryToken(Chat), useValue: { findOne: jest.fn(), update: jest.fn(), remove: jest.fn(), findOneBy: jest.fn() } },
-        { provide: getRepositoryToken(ChatMember), useValue: { find: jest.fn(), findOne: jest.fn(), update: jest.fn(), create: jest.fn(), save: jest.fn(), createQueryBuilder: jest.fn() } },
-        { provide: getRepositoryToken(Message), useValue: { find: jest.fn(), create: jest.fn(), save: jest.fn(), createQueryBuilder: jest.fn() } },
+        {
+          provide: DataSource,
+          useValue: {
+            createQueryRunner: jest.fn().mockReturnValue(queryRunnerMock),
+            manager: { findBy: jest.fn() },
+          },
+        },
+        {
+          provide: getRepositoryToken(Chat),
+          useValue: {
+            findOne: jest.fn(),
+            update: jest.fn(),
+            remove: jest.fn(),
+            findOneBy: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(ChatMember),
+          useValue: {
+            find: jest.fn(),
+            findOne: jest.fn(),
+            update: jest.fn(),
+            create: jest.fn(),
+            save: jest.fn(),
+            createQueryBuilder: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(Message),
+          useValue: {
+            find: jest.fn(),
+            create: jest.fn(),
+            save: jest.fn(),
+            createQueryBuilder: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -57,7 +119,12 @@ describe('ChatsService', () => {
 
   describe('create', () => {
     it('creates a chat and returns it', async () => {
-      const dto = { members: ['uid2'], admin: 'uid1', isGroup: true, name: 'Group' };
+      const dto = {
+        members: ['uid2'],
+        admin: 'uid1',
+        isGroup: true,
+        name: 'Group',
+      };
       chatMemberRepository.find.mockResolvedValue([]);
       mockQueryRunner.manager.findBy.mockResolvedValue([mockUser, mockUser2]);
       mockQueryRunner.manager.create.mockReturnValueOnce(mockChat);
@@ -74,10 +141,15 @@ describe('ChatsService', () => {
 
     it('returns existing private chat instead of creating duplicate', async () => {
       const existingChat = { ...mockChat, id: 'existing-chat', isGroup: false };
-      chatMemberRepository.find.mockResolvedValue([{ chat: existingChat } as ChatMember]);
+      chatMemberRepository.find.mockResolvedValue([
+        { chat: existingChat } as ChatMember,
+      ]);
       chatRepository.findOne.mockResolvedValue(existingChat);
 
-      const result = await service.create({ members: ['uid2'], admin: 'uid1' } as any);
+      const result = await service.create({
+        members: ['uid2'],
+        admin: 'uid1',
+      } as any);
 
       expect(result.id).toBe('existing-chat');
     });
@@ -86,24 +158,42 @@ describe('ChatsService', () => {
       chatMemberRepository.find.mockResolvedValue([]);
       mockQueryRunner.manager.findBy.mockRejectedValue(new Error('db error'));
 
-      await expect(service.create({ members: ['uid2'], admin: 'uid1', isGroup: true } as any)).rejects.toThrow();
+      await expect(
+        service.create({
+          members: ['uid2'],
+          admin: 'uid1',
+          isGroup: true,
+        } as any),
+      ).rejects.toThrow();
       expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
     });
   });
 
   describe('delete', () => {
     it('deletes private chat when requester is a member', async () => {
-      const chat = { ...mockChat, isGroup: false, members: [{ user: { uid: 'uid1' }, role: 'member' }] };
+      const chat = {
+        ...mockChat,
+        isGroup: false,
+        members: [{ user: { uid: 'uid1' }, role: 'member' }],
+      };
       chatRepository.findOne.mockResolvedValue(chat);
 
       const result = await service.delete('chat-id', 'uid1');
 
-      expect(result).toEqual({ id: 'chat-id', deleted: true, participantUids: ['uid1'] });
+      expect(result).toEqual({
+        id: 'chat-id',
+        deleted: true,
+        participantUids: ['uid1'],
+      });
       expect(chatRepository.remove).toHaveBeenCalledWith(chat);
     });
 
     it('deletes group chat when requester is an admin', async () => {
-      const chat = { ...mockChat, isGroup: true, members: [{ user: { uid: 'uid1' }, role: 'admin' }] };
+      const chat = {
+        ...mockChat,
+        isGroup: true,
+        members: [{ user: { uid: 'uid1' }, role: 'admin' }],
+      };
       chatRepository.findOne.mockResolvedValue(chat);
 
       const result = await service.delete('chat-id', 'uid1');
@@ -112,15 +202,22 @@ describe('ChatsService', () => {
     });
 
     it('throws ForbiddenException when not a member', async () => {
-      chatRepository.findOne.mockResolvedValue({ ...mockChat, members: [{ user: { uid: 'uid2' }, role: 'admin' }] });
+      chatRepository.findOne.mockResolvedValue({
+        ...mockChat,
+        members: [{ user: { uid: 'uid2' }, role: 'admin' }],
+      });
 
-      await expect(service.delete('chat-id', 'uid1')).rejects.toThrow(ForbiddenException);
+      await expect(service.delete('chat-id', 'uid1')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('throws NotFoundException when chat not found', async () => {
       chatRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.delete('unknown', 'uid1')).rejects.toThrow(NotFoundException);
+      await expect(service.delete('unknown', 'uid1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -128,19 +225,27 @@ describe('ChatsService', () => {
     it('passes when user is a member', async () => {
       chatMemberRepository.findOne.mockResolvedValue({} as any);
 
-      await expect(service.assertMember('chat-id', 'uid1')).resolves.toBeUndefined();
+      await expect(
+        service.assertMember('chat-id', 'uid1'),
+      ).resolves.toBeUndefined();
     });
 
     it('throws when user is not a member', async () => {
       chatMemberRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.assertMember('chat-id', 'uid1')).rejects.toThrow(UnauthorizedException);
+      await expect(service.assertMember('chat-id', 'uid1')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
   describe('addMembers', () => {
     it('adds new members to a group chat', async () => {
-      const chat = { ...mockChat, isGroup: true, members: [{ user: { uid: 'uid1' }, role: 'admin' }] };
+      const chat = {
+        ...mockChat,
+        isGroup: true,
+        members: [{ user: { uid: 'uid1' }, role: 'admin' }],
+      };
       chatRepository.findOne.mockResolvedValue(chat);
       dataSource.manager.findBy.mockResolvedValue([mockUser2]);
       chatMemberRepository.create.mockReturnValue({} as any);
@@ -155,8 +260,22 @@ describe('ChatsService', () => {
 
   describe('getMessages', () => {
     it('returns mapped messages ordered by createdAt ASC', async () => {
-      const msgs = [{ id: 'm1', senderId: 'uid1', content: 'Hi', createdAt: new Date(1), status: 'sent' as const },
-        { id: 'm2', senderId: 'uid2', content: 'Hello', createdAt: new Date(2), status: 'read' as const }] as Message[];
+      const msgs = [
+        {
+          id: 'm1',
+          senderId: 'uid1',
+          content: 'Hi',
+          createdAt: new Date(1),
+          status: 'sent' as const,
+        },
+        {
+          id: 'm2',
+          senderId: 'uid2',
+          content: 'Hello',
+          createdAt: new Date(2),
+          status: 'read' as const,
+        },
+      ] as Message[];
       messageRepository.find.mockResolvedValue(msgs);
 
       const result = await service.getMessages('chat-id', 0, 'uid1');
@@ -169,22 +288,40 @@ describe('ChatsService', () => {
   describe('sendMessage', () => {
     it('creates message and updates chat preview', async () => {
       chatMemberRepository.findOne.mockResolvedValue({} as any);
-      const saved = { id: 'm1', senderId: 'uid1', content: 'Hello', createdAt: new Date(), status: 'sent' } as Message;
+      const saved = {
+        id: 'm1',
+        senderId: 'uid1',
+        content: 'Hello',
+        createdAt: new Date(),
+        status: 'sent',
+      } as Message;
       messageRepository.create.mockReturnValue(saved);
       messageRepository.save.mockResolvedValue(saved);
 
       const result = await service.sendMessage('chat-id', 'uid1', 'Hello');
 
       expect(result.text).toBe('Hello');
-      expect(chatRepository.update).toHaveBeenCalledWith('chat-id', { lastMessageText: 'Hello', lastMessageAt: saved.createdAt });
+      expect(chatRepository.update).toHaveBeenCalledWith('chat-id', {
+        lastMessageText: 'Hello',
+        lastMessageAt: saved.createdAt,
+      });
     });
   });
 
   describe('markRead', () => {
     it('updates unread count and returns read message ids', async () => {
       chatMemberRepository.findOne.mockResolvedValue({} as any);
-      const updatedMsgs = [{ id: 'm1', senderId: 'uid2' }, { id: 'm2', senderId: 'uid2' }] as Message[];
-      const qb = { update: jest.fn().mockReturnThis(), set: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), andWhere: jest.fn().mockReturnThis(), execute: jest.fn().mockResolvedValue(undefined) } as any;
+      const updatedMsgs = [
+        { id: 'm1', senderId: 'uid2' },
+        { id: 'm2', senderId: 'uid2' },
+      ] as Message[];
+      const qb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue(undefined),
+      } as any;
       messageRepository.createQueryBuilder.mockReturnValue(qb);
       messageRepository.find.mockResolvedValue(updatedMsgs);
 

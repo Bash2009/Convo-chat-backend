@@ -35,7 +35,9 @@ describe('ChatsController', () => {
 
       expect(result.id).toBe('chat-id');
       expect(service.create).toHaveBeenCalledWith(
-        expect.objectContaining({ members: expect.arrayContaining(['uid1', 'uid2']) }),
+        expect.objectContaining({
+          members: expect.arrayContaining(['uid1', 'uid2']),
+        }),
       );
     });
   });
@@ -43,7 +45,11 @@ describe('ChatsController', () => {
   describe('delete', () => {
     it('delegates to service.delete', async () => {
       const req = { user: { userId: 'uid1' } } as any;
-      service.delete.mockResolvedValue({ id: 'chat-id', deleted: true, participantUids: ['uid1'] } as any);
+      service.delete.mockResolvedValue({
+        id: 'chat-id',
+        deleted: true,
+        participantUids: ['uid1'],
+      } as any);
 
       const result = await controller.delete('chat-id', req);
 

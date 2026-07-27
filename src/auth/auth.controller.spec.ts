@@ -6,7 +6,7 @@ const mockRes = () => {
   const res: any = {};
   res.cookie = jest.fn().mockReturnValue(res);
   res.clearCookie = jest.fn().mockReturnValue(res);
-  return res as any;
+  return res;
 };
 
 describe('AuthController', () => {
@@ -36,7 +36,10 @@ describe('AuthController', () => {
   describe('register', () => {
     it('delegates to authService.register', async () => {
       const dto = { uid: 'u1', email: 'a@b.com' };
-      authService.register.mockResolvedValue({ ...dto, access_token: 't' } as any);
+      authService.register.mockResolvedValue({
+        ...dto,
+        access_token: 't',
+      } as any);
       const res = mockRes();
 
       const result = await controller.register(dto, res);
