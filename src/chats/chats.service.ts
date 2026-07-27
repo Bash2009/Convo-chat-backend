@@ -319,6 +319,71 @@ export class ChatsService {
     return updated;
   }
 
+  // ── Leave a group chat (member leaves, admin deletes) ─────────────────────
+
+  async leaveGroup(chatId: string, uid: string) {
+    const chat = await this.chatRepository.findOne({
+      where: { id: chatId },
+      relations: { members: { user: true } },
+    });
+    if (!chat) throw new NotFoundException('Chat not found');
+
+    const member = chat.members.find((m) => m.user?.uid === uid);
+    if (!member) throw new ForbiddenException('Not a member of this chat');
+
+    const allMemberUids = chat.members.map((m) => m.user.uid);
+
+    // Private chat or admin leaving a group → delete the entire chat
+    if (!chat.isGroup || member.role === 'admin') {
+      await this.chatRepository.remove(chat);
+      return {
+        action: 'deleted' as const,
+        id: chatId,
+        memberUids: allMemberUids,
+      };
+    }
+
+    // Regular member leaving a group → just remove them from the chat
+    await this.chatMemberRepository.remove(member);
+    const updatedChat = await this.getChatById(chatId);
+    return {
+      action: 'removed' as const,
+      chatId,
+      uid,
+      updatedChat,
+    };
+  }
+
+  // ── Remove a member from a group (admin only) ─────────────────────────────
+
+  async removeMember(chatId: string, requesterUid: string, targetUid: string) {
+    const chat = await this.chatRepository.findOne({
+      where: { id: chatId },
+      relations: { members: { user: true } },
+    });
+    if (!chat) throw new NotFoundException('Chat not found');
+    if (!chat.isGroup) throw new ForbiddenException('Not a group chat');
+
+    const requesterMember = chat.members.find(
+      (m) => m.user?.uid === requesterUid,
+    );
+    if (!requesterMember)
+      throw new ForbiddenException('Not a member of this chat');
+    if (requesterMember.role !== 'admin')
+      throw new ForbiddenException('Only admins can remove members');
+
+    if (requesterUid === targetUid)
+      throw new ForbiddenException(
+        'Cannot remove yourself; use leaveGroup instead',
+      );
+
+    const targetMember = chat.members.find((m) => m.user?.uid === targetUid);
+    if (!targetMember) throw new NotFoundException('Member not found');
+
+    await this.chatMemberRepository.remove(targetMember);
+    return this.getChatById(chatId);
+  }
+
   // ── Search user ───────────────────────────────────────────────────────────
 
   async getUser(username: string) {
@@ -356,11 +421,13 @@ export class ChatsService {
   // ── Private helper ────────────────────────────────────────────────────────
 
   private formatChat(chat: Chat, unreadCount: number) {
+    const adminUid = chat.members.find((m) => m.role === 'admin')?.user?.uid;
     return {
       id: chat.id,
       isGroup: chat.isGroup,
       name: chat.name ?? '',
       avatarUrl: chat.avatarUrl ?? '',
+      admin: adminUid,
       participants: chat.members.map((m) => ({
         user: {
           uid: m.user.uid,

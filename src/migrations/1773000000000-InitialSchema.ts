@@ -100,10 +100,18 @@ export class InitialSchema1773000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "chat_member" DROP CONSTRAINT "FK_chat_member_chat"`);
-    await queryRunner.query(`ALTER TABLE "chat_member" DROP CONSTRAINT "FK_chat_member_user"`);
-    await queryRunner.query(`ALTER TABLE "message" DROP CONSTRAINT "FK_message_chat"`);
-    await queryRunner.query(`ALTER TABLE "profiles" DROP CONSTRAINT "FK_profiles_user"`);
+    await queryRunner.query(
+      `ALTER TABLE "chat_member" DROP CONSTRAINT "FK_chat_member_chat"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "chat_member" DROP CONSTRAINT "FK_chat_member_user"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "message" DROP CONSTRAINT "FK_message_chat"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "profiles" DROP CONSTRAINT "FK_profiles_user"`,
+    );
     await queryRunner.query(`DROP TABLE "chat_member"`);
     await queryRunner.query(`DROP TABLE "message"`);
     await queryRunner.query(`DROP TABLE "chat"`);

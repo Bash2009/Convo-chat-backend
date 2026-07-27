@@ -55,11 +55,14 @@ describe('ChatsService', () => {
     name: '',
     avatarUrl: '',
     lastMessageText: '',
+    lastMessageSenderId: undefined,
+    lastMessageStatus: undefined,
     lastMessageAt: null,
     createdAt: new Date(),
+    admin: undefined,
     members: [
-      { user: mockUser, unreadCount: 0 },
-      { user: mockUser2, unreadCount: 0 },
+      { user: mockUser, unreadCount: 0, role: 'member' },
+      { user: mockUser2, unreadCount: 0, role: 'member' },
     ],
   } as any;
 
@@ -95,6 +98,7 @@ describe('ChatsService', () => {
             update: jest.fn(),
             create: jest.fn(),
             save: jest.fn(),
+            remove: jest.fn(),
           },
         },
         {
@@ -460,6 +464,169 @@ describe('ChatsService', () => {
         { chatId: 'chat-id', user: { uid: 'uid1' } },
         { unreadCount: 0, lastReadAt: expect.any(Date) },
       );
+    });
+  });
+
+  // ── leaveGroup ──────────────────────────────────────────────────────────────
+
+  describe('leaveGroup', () => {
+    it('deletes chat when admin leaves a group', async () => {
+      const groupChat = {
+        id: 'chat-id',
+        isGroup: true,
+        members: [
+          { user: { uid: 'uid1' }, role: 'admin' },
+          { user: { uid: 'uid2' }, role: 'member' },
+        ],
+      } as any;
+      chatRepository.findOne.mockResolvedValue(groupChat);
+      chatRepository.remove.mockResolvedValue(undefined);
+
+      const result = await service.leaveGroup('chat-id', 'uid1');
+
+      expect(result.action).toBe('deleted');
+      expect(result.id).toBe('chat-id');
+      expect(result.memberUids).toEqual(['uid1', 'uid2']);
+      expect(chatRepository.remove).toHaveBeenCalledWith(groupChat);
+    });
+
+    it('removes member row when regular member leaves a group', async () => {
+      const memberRecord = { id: 'm1', user: { uid: 'uid1' } };
+      const groupChat = {
+        id: 'chat-id',
+        isGroup: true,
+        members: [memberRecord, { user: { uid: 'uid2' }, role: 'admin' }],
+      } as any;
+      chatRepository.findOne.mockResolvedValue(groupChat);
+      chatRepository.findOneOrFail.mockResolvedValue(groupChat);
+
+      const result = await service.leaveGroup('chat-id', 'uid1');
+
+      expect(result.action).toBe('removed');
+      expect(result.chatId).toBe('chat-id');
+      expect(result.uid).toBe('uid1');
+      expect(result.updatedChat).toBeDefined();
+      expect(result.updatedChat.id).toBe('chat-id');
+      expect(chatMemberRepository.remove).toHaveBeenCalledWith(memberRecord);
+    });
+
+    it('deletes private chat when user leaves', async () => {
+      const privateChat = {
+        id: 'chat-id',
+        isGroup: false,
+        members: [
+          { user: { uid: 'uid1' }, role: 'member' },
+          { user: { uid: 'uid2' }, role: 'member' },
+        ],
+      } as any;
+      chatRepository.findOne.mockResolvedValue(privateChat);
+      chatRepository.remove.mockResolvedValue(undefined);
+
+      const result = await service.leaveGroup('chat-id', 'uid1');
+
+      expect(result.action).toBe('deleted');
+      expect(result.id).toBe('chat-id');
+    });
+
+    it('throws when user is not a member', async () => {
+      chatRepository.findOne.mockResolvedValue({
+        id: 'chat-id',
+        isGroup: true,
+        members: [{ user: { uid: 'uid2' }, role: 'admin' }],
+      } as any);
+
+      await expect(service.leaveGroup('chat-id', 'uid1')).rejects.toThrow(
+        'Not a member',
+      );
+    });
+
+    it('throws when chat does not exist', async () => {
+      chatRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.leaveGroup('chat-id', 'uid1')).rejects.toThrow(
+        'Chat not found',
+      );
+    });
+  });
+
+  // ── removeMember ───────────────────────────────────────────────────────────
+
+  describe('removeMember', () => {
+    it('removes a member and returns updated chat', async () => {
+      const groupChat = {
+        id: 'chat-id',
+        isGroup: true,
+        members: [
+          { user: { uid: 'uid1' }, role: 'admin' },
+          { user: { uid: 'uid2' }, role: 'member' },
+          { user: { uid: 'uid3' }, role: 'member' },
+        ],
+      } as any;
+      chatRepository.findOne.mockResolvedValue(groupChat);
+      chatMemberRepository.remove.mockResolvedValue(undefined);
+      chatRepository.findOneOrFail.mockResolvedValue({
+        ...groupChat,
+        members: groupChat.members.filter((m: any) => m.user.uid !== 'uid2'),
+      });
+
+      const result = await service.removeMember('chat-id', 'uid1', 'uid2');
+
+      expect(result.id).toBe('chat-id');
+      expect(chatMemberRepository.remove).toHaveBeenCalledWith(
+        expect.objectContaining({ user: { uid: 'uid2' } }),
+      );
+    });
+
+    it('throws when requester is not admin', async () => {
+      const groupChat = {
+        id: 'chat-id',
+        isGroup: true,
+        members: [
+          { user: { uid: 'uid1' }, role: 'member' },
+          { user: { uid: 'uid2' }, role: 'member' },
+        ],
+      } as any;
+      chatRepository.findOne.mockResolvedValue(groupChat);
+
+      await expect(
+        service.removeMember('chat-id', 'uid1', 'uid2'),
+      ).rejects.toThrow('Only admins can remove members');
+    });
+
+    it('throws when chat is not a group', async () => {
+      chatRepository.findOne.mockResolvedValue({
+        ...mockChat,
+        isGroup: false,
+        members: [{ user: { uid: 'uid1' }, role: 'admin' }],
+      });
+
+      await expect(
+        service.removeMember('chat-id', 'uid1', 'uid2'),
+      ).rejects.toThrow('Not a group chat');
+    });
+
+    it('throws when target member is not found', async () => {
+      chatRepository.findOne.mockResolvedValue({
+        id: 'chat-id',
+        isGroup: true,
+        members: [{ user: { uid: 'uid1' }, role: 'admin' }],
+      });
+
+      await expect(
+        service.removeMember('chat-id', 'uid1', 'uid2'),
+      ).rejects.toThrow('Member not found');
+    });
+
+    it('throws when requester tries to remove themselves', async () => {
+      chatRepository.findOne.mockResolvedValue({
+        id: 'chat-id',
+        isGroup: true,
+        members: [{ user: { uid: 'uid1' }, role: 'admin' }],
+      });
+
+      await expect(
+        service.removeMember('chat-id', 'uid1', 'uid1'),
+      ).rejects.toThrow('Cannot remove yourself');
     });
   });
 });
