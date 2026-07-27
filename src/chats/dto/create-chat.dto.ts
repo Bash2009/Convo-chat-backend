@@ -8,6 +8,7 @@ import {
   ValidatorConstraintInterface,
   ValidationArguments,
 } from 'class-validator';
+import { ApiPropertyOptional, ApiHideProperty } from '@nestjs/swagger';
 
 @ValidatorConstraint({ name: 'hasParticipant', async: false })
 class HasParticipantConstraint implements ValidatorConstraintInterface {
@@ -24,23 +25,28 @@ class HasParticipantConstraint implements ValidatorConstraintInterface {
 }
 
 export class CreateChatDto {
+  @ApiPropertyOptional({ description: 'Initial member UIDs' })
   @IsArray()
   @IsOptional()
   @IsString({ each: true })
   members?: string[];
 
+  @ApiPropertyOptional({ description: 'Chat name (required for groups)' })
   @IsString()
   @IsOptional()
   name: string;
 
+  @ApiPropertyOptional({ description: 'Whether this is a group chat' })
   @IsBoolean()
   @IsOptional()
   isGroup: boolean;
 
+  @ApiPropertyOptional({ description: 'Admin UID (defaults to creator)' })
   @IsString()
   @IsOptional()
   admin: string;
 
+  @ApiHideProperty()
   @Validate(HasParticipantConstraint)
   private readonly _hasParticipant?: never;
 }

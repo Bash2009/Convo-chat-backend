@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import {
   WebSocketGateway,
   OnGatewayConnection,
@@ -26,6 +27,8 @@ import { plainToInstance } from 'class-transformer';
 export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
 
+  private readonly logger = new Logger(ChatsGateway.name);
+
   constructor(
     private chatsService: ChatsService,
     private jwtService: JwtService,
@@ -34,14 +37,21 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // ── Auth helper ────────────────────────────────────────────────────────────
 
-  /** Verifies the JWT sent in the socket handshake and returns the uid. */
-  private verifyClient(client: Socket): string {
+  /** Verifies the JWT once on connection and caches uid on the socket.
+   *  Subsequent calls use the cached value to avoid repeated signature checks. */
+  private getUid(client: Socket): string {
+    const data = client.data as Record<string, unknown> | undefined;
+    if (data?.uid) return data.uid as string;
     const token = client.handshake.auth?.token as string | undefined;
     if (!token) throw new WsException('Missing auth token');
     try {
       const payload = this.jwtService.verify<{ sub: string }>(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
+      client.data = {
+        ...((client.data ?? {}) as Record<string, unknown>),
+        uid: payload.sub,
+      };
       return payload.sub;
     } catch {
       throw new WsException('Invalid or expired token');
@@ -52,16 +62,23 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   handleConnection(client: Socket) {
     try {
-      this.verifyClient(client);
-      console.log(`Client connected: ${client.id}`);
+      const uid = this.getUid(client);
+      client.join(`user:${uid}`);
+      this.server.emit('userOnline', { uid });
+      this.logger.log(`Client connected: ${client.id} (user:${uid})`);
     } catch {
-      console.warn(`Rejected unauthenticated socket: ${client.id}`);
+      this.logger.warn(`Rejected unauthenticated socket: ${client.id}`);
       client.disconnect(true);
     }
   }
 
   handleDisconnect(client: Socket) {
-    console.log(`Client disconnected: ${client.id}`);
+    const data = client.data as Record<string, unknown> | undefined;
+    const uid = data?.uid as string | undefined;
+    if (uid) {
+      this.server.emit('userOffline', { uid });
+    }
+    this.logger.log(`Client disconnected: ${client.id}`);
   }
 
   // ── Chat list ──────────────────────────────────────────────────────────────
@@ -72,7 +89,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = this.verifyClient(client);
+      const uid = this.getUid(client);
       // uid is the Firebase uid which is the same as the username field sent by the client
       const chats = await this.chatsService.getChats(uid);
       client.emit('chats', chats);
@@ -90,10 +107,11 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      this.verifyClient(client);
+      this.getUid(client);
       const result = await this.chatsService.getUser(data.username);
       client.emit('userSearch', { ...result });
-    } catch {
+    } catch (err) {
+      this.logger.error(`getUser error: ${(err as Error).message}`);
       client.emit('userSearch', { userExists: false });
     }
   }
@@ -104,7 +122,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = this.verifyClient(client);
+      const uid = this.getUid(client);
 
       // WebSocket messages bypass NestJS ValidationPipe — validate inline
       const dto = plainToInstance(CreateChatDto, data);
@@ -116,9 +134,13 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? currentMembers
         : [...currentMembers, uid];
       const newChat = await this.chatsService.create({ ...dto, members });
-      this.server.emit('chatCreated', newChat);
+      const participants = newChat.participants as Array<{
+        user: { uid: string };
+      }>;
+      for (const p of participants)
+        this.server.to(`user:${p.user.uid}`).emit('chatCreated', newChat);
     } catch (err) {
-      console.error('createChat error:', err);
+      this.logger.error(`createChat error: ${(err as Error).message}`);
       client.emit('error', {
         event: 'createChat',
         message: 'Failed to create chat',
@@ -134,11 +156,13 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      this.verifyClient(client);
+      const uid = this.getUid(client);
+      await this.chatsService.assertMember(data.chatId, uid);
       await client.join(data.chatId);
-      const messages = await this.chatsService.getMessages(data.chatId);
+      const messages = await this.chatsService.getMessages(data.chatId, uid);
       client.emit('messages', messages);
-    } catch {
+    } catch (err) {
+      this.logger.error(`joinChat error: ${(err as Error).message}`);
       client.emit('error', {
         event: 'joinChat',
         message: 'Failed to join chat',
@@ -154,18 +178,45 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     await client.leave(data.chatId);
   }
 
+  @SubscribeMessage('loadMoreMessages')
+  async loadMoreMessages(
+    @MessageBody() data: { chatId: string; before?: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const uid = this.getUid(client);
+      const olderMessages = await this.chatsService.loadMoreMessages(
+        data.chatId,
+        uid,
+        data.before,
+      );
+      client.emit('moreMessages', olderMessages);
+    } catch (err) {
+      this.logger.error(`loadMoreMessages error: ${(err as Error).message}`);
+      client.emit('error', {
+        event: 'loadMoreMessages',
+        message: 'Failed to load messages',
+      });
+    }
+  }
+
   @SubscribeMessage('deleteChat')
   async deleteChat(
     @MessageBody() data: { chatId: string },
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = this.verifyClient(client);
+      const uid = this.getUid(client);
+      const members = await this.chatsService.getMemberUids(data.chatId);
       const result = await this.chatsService.delete(data.chatId, uid);
-      this.server.emit('chatDeleted', result);
+      for (const memberUid of members)
+        this.server.to(`user:${memberUid}`).emit('chatDeleted', result);
     } catch (err) {
-      console.error('deleteChat error:', err);
-      client.emit('error', { event: 'deleteChat', message: 'Failed to delete chat' });
+      this.logger.error(`deleteChat error: ${(err as Error).message}`);
+      client.emit('error', {
+        event: 'deleteChat',
+        message: 'Failed to delete chat',
+      });
     }
   }
 
@@ -175,31 +226,112 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = this.verifyClient(client);
+      const uid = this.getUid(client);
 
       const dto = plainToInstance(AddMembersDto, data);
       await validateOrReject(dto);
 
-      const chat = await this.chatsService.addMembers(data.chatId, data.members, uid);
-      this.server.emit('memberAdded', chat);
+      const chat = await this.chatsService.addMembers(
+        data.chatId,
+        data.members,
+        uid,
+      );
+      const participants = chat.participants as Array<{
+        user: { uid: string };
+      }>;
+      for (const p of participants)
+        this.server.to(`user:${p.user.uid}`).emit('memberAdded', chat);
     } catch (err) {
-      console.error('addMember error:', err);
-      client.emit('error', { event: 'addMember', message: 'Failed to add member' });
+      this.logger.error(`addMember error: ${(err as Error).message}`);
+      client.emit('error', {
+        event: 'addMember',
+        message: 'Failed to add member',
+      });
+    }
+  }
+
+  @SubscribeMessage('leaveGroup')
+  async leaveGroup(
+    @MessageBody() data: { chatId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const uid = this.getUid(client);
+      const result = await this.chatsService.leaveGroup(data.chatId, uid);
+
+      if (result.action === 'deleted') {
+        for (const memberUid of result.memberUids)
+          this.server.to(`user:${memberUid}`).emit('chatDeleted', {
+            id: data.chatId,
+            deleted: true,
+          });
+      } else {
+        client.leave(data.chatId);
+        client.emit('memberRemoved', result.updatedChat);
+        for (const member of result.updatedChat.participants)
+          this.server
+            .to(`user:${member.user.uid}`)
+            .emit('memberRemoved', result.updatedChat);
+      }
+    } catch (err) {
+      this.logger.error(`leaveGroup error: ${(err as Error).message}`);
+      client.emit('error', {
+        event: 'leaveGroup',
+        message: 'Failed to leave group',
+      });
+    }
+  }
+
+  @SubscribeMessage('removeMember')
+  async removeMember(
+    @MessageBody() data: { chatId: string; memberUid: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const requesterUid = this.getUid(client);
+      const updatedChat = await this.chatsService.removeMember(
+        data.chatId,
+        requesterUid,
+        data.memberUid,
+      );
+
+      // Force the removed member's sockets to leave the chat room
+      const removedSockets = await this.server
+        .in(`user:${data.memberUid}`)
+        .fetchSockets();
+      for (const s of removedSockets) s.leave(data.chatId);
+
+      for (const member of updatedChat.participants)
+        this.server
+          .to(`user:${member.user.uid}`)
+          .emit('memberRemoved', updatedChat);
+
+      // Also notify the removed member
+      this.server
+        .to(`user:${data.memberUid}`)
+        .emit('memberRemoved', updatedChat);
+    } catch (err) {
+      this.logger.error(`removeMember error: ${(err as Error).message}`);
+      client.emit('error', {
+        event: 'removeMember',
+        message: 'Failed to remove member',
+      });
     }
   }
 
   @SubscribeMessage('sendMessage')
   async sendMessage(
-    @MessageBody() data: { chatId: string; text: string },
+    @MessageBody() data: { chatId: string; text: string; senderId?: string },
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const senderId = this.verifyClient(client);
-      const message = await this.chatsService.sendMessage(
+      const senderId = this.getUid(client);
+      const result = await this.chatsService.sendMessage(
         data.chatId,
         senderId,
         data.text,
       );
+      const { message, unreadByUid } = result;
       this.server
         .to(data.chatId)
         .emit('newMessage', { ...message, chatId: data.chatId });
@@ -209,11 +341,19 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (socketsInRoom > 1) {
         this.server.to(data.chatId).emit('messageStatus', {
           messageId: message.id,
+          chatId: data.chatId,
           status: 'delivered',
         });
       }
+
+      for (const [uid, unread] of Object.entries(unreadByUid)) {
+        this.server.to(`user:${uid}`).emit('unreadUpdated', {
+          chatId: data.chatId,
+          unread,
+        });
+      }
     } catch (err) {
-      console.error('sendMessage error:', err);
+      this.logger.error(`sendMessage error: ${(err as Error).message}`);
       client.emit('error', {
         event: 'sendMessage',
         message: 'Failed to send message',
@@ -223,20 +363,25 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('markRead')
   async markRead(
-    @MessageBody() data: { chatId: string },
+    @MessageBody() data: { chatId: string; uid?: string },
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const uid = this.verifyClient(client);
+      const uid = this.getUid(client);
       const readMessages = await this.chatsService.markRead(data.chatId, uid);
       for (const msg of readMessages) {
         this.server.to(data.chatId).emit('messageStatus', {
           messageId: msg.id,
+          chatId: data.chatId,
           status: 'read',
         });
       }
+      client.emit('unreadUpdated', {
+        chatId: data.chatId,
+        unread: 0,
+      });
     } catch (err) {
-      console.error('markRead error:', err);
+      this.logger.error(`markRead error: ${(err as Error).message}`);
     }
   }
 }

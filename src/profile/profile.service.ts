@@ -65,7 +65,8 @@ export class ProfileService {
       if (error instanceof HttpException) {
         throw error;
       }
-      const driverError = (error as { driverError?: { code?: string } }).driverError;
+      const driverError = (error as { driverError?: { code?: string } })
+        .driverError;
       if (driverError?.code === '23505') {
         throw new ConflictException('Username already exists');
       }
@@ -106,7 +107,8 @@ export class ProfileService {
       return this.profileRepository.save(profile);
     } catch (error) {
       if (error instanceof HttpException) throw error;
-      const driverError = (error as { driverError?: { code?: string } }).driverError;
+      const driverError = (error as { driverError?: { code?: string } })
+        .driverError;
       if (driverError?.code === '23505') {
         throw new ConflictException('Username already exists');
       }

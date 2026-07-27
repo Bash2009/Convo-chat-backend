@@ -6,7 +6,10 @@ import { UserModule } from './user/user.module';
 import { ProfileModule } from './profile/profile.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { RedisModule } from './redis/redis.module';
+import { QueueModule } from './queue/queue.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { SocketDocsModule } from './socket-docs/socket-docs.module';
 import { ChatsModule } from './chats/chats.module';
 
 @Module({
@@ -28,14 +31,17 @@ import { ChatsModule } from './chats/chats.module';
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         logging: configService.get<string>('NODE_ENV') === 'development',
-        synchronize: false,
-        migrationsRun: true,
-        ssl: {
-          rejectUnauthorized: false,
-        },
+        synchronize: configService.get<string>('NODE_ENV') === 'development',
+        migrationsRun: configService.get<string>('NODE_ENV') === 'production',
+        // ssl: {
+        //   rejectUnauthorized: configService.get<string>('NODE_ENV') === 'production',
+        // },
       }),
     }),
+    RedisModule,
+    QueueModule,
     CloudinaryModule,
+    SocketDocsModule,
     ChatsModule,
   ],
   controllers: [AppController],

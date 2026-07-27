@@ -1,11 +1,12 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { ProfileService } from 'src/profile/profile.service';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, LessThan, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Chat } from './entities/chat.entity';
 import { ChatMember } from './entities/chat-members.entity';
@@ -14,6 +15,8 @@ import { User } from 'src/user/entities/user.entity';
 
 @Injectable()
 export class ChatsService {
+  private readonly logger = new Logger(ChatsService.name);
+
   constructor(
     private profileService: ProfileService,
     private dataSource: DataSource,
@@ -45,7 +48,6 @@ export class ChatsService {
     await queryRunner.startTransaction();
 
     try {
-
       const users = await queryRunner.manager.findBy(User, {
         uid: In(allUids),
       });
@@ -74,7 +76,7 @@ export class ChatsService {
       return this.getChatById(savedChat.id);
     } catch (err) {
       await queryRunner.rollbackTransaction();
-      console.error('createChat error:', err);
+      this.logger.error(`createChat error: ${(err as Error).message}`);
       throw err;
     } finally {
       await queryRunner.release();
@@ -90,9 +92,13 @@ export class ChatsService {
     });
     if (!chat) throw new NotFoundException('Chat not found');
 
-    const requesterMember = chat.members.find((m) => m.user?.uid === requesterUid);
-    if (!requesterMember) throw new ForbiddenException('Not a member of this chat');
-    if (chat.isGroup && requesterMember.role !== 'admin') throw new ForbiddenException('Only admins can delete a group chat');
+    const requesterMember = chat.members.find(
+      (m) => m.user?.uid === requesterUid,
+    );
+    if (!requesterMember)
+      throw new ForbiddenException('Not a member of this chat');
+    if (chat.isGroup && requesterMember.role !== 'admin')
+      throw new ForbiddenException('Only admins can delete a group chat');
 
     await this.chatRepository.remove(chat);
     return { id: chatId, deleted: true };
@@ -106,11 +112,16 @@ export class ChatsService {
       relations: { members: { user: true } },
     });
     if (!chat) throw new NotFoundException('Chat not found');
-    if (!chat.isGroup) throw new ForbiddenException('Cannot add members to a private chat');
+    if (!chat.isGroup)
+      throw new ForbiddenException('Cannot add members to a private chat');
 
-    const requesterMember = chat.members.find((m) => m.user?.uid === requesterUid);
-    if (!requesterMember) throw new ForbiddenException('Not a member of this chat');
-    if (requesterMember.role !== 'admin') throw new ForbiddenException('Only admins can add members');
+    const requesterMember = chat.members.find(
+      (m) => m.user?.uid === requesterUid,
+    );
+    if (!requesterMember)
+      throw new ForbiddenException('Not a member of this chat');
+    if (requesterMember.role !== 'admin')
+      throw new ForbiddenException('Only admins can add members');
 
     const existingUids = new Set(chat.members.map((m) => m.user.uid));
     const toAdd = newUids.filter((u) => !existingUids.has(u));
@@ -131,6 +142,17 @@ export class ChatsService {
 
     await this.chatMemberRepository.save(memberEntities);
     return this.getChatById(chatId);
+  }
+
+  // ── Get member UIDs for a chat (for targeted socket broadcasts) ─────────
+
+  async getMemberUids(chatId: string): Promise<string[]> {
+    const members = await this.chatMemberRepository.find({
+      where: { chatId },
+      select: ['id'],
+      relations: { user: true },
+    });
+    return members.map((m) => m.user.uid);
   }
 
   // ── Get all chats for a user ─────────────────────────────────────────────
@@ -156,14 +178,54 @@ export class ChatsService {
     return this.formatChat(chat, 0);
   }
 
+  // ── Shared membership assertion ──────────────────────────────────────────
+
+  async assertMember(chatId: string, uid: string): Promise<void> {
+    const member = await this.chatMemberRepository.findOne({
+      where: { chatId, user: { uid } },
+    });
+    if (!member) throw new ForbiddenException('Not a member of this chat');
+  }
+
   // ── Get messages for a chat room ─────────────────────────────────────────
 
-  async getMessages(chatId: string) {
+  async getMessages(chatId: string, uid: string) {
+    await this.assertMember(chatId, uid);
     const messages = await this.messageRepository.find({
       where: { chatId },
       order: { createdAt: 'ASC' },
+      take: 50,
     });
 
+    return messages.map((m) => ({
+      id: m.id,
+      senderId: m.senderId,
+      text: m.content,
+      sentAt: m.createdAt,
+      status: m.status,
+    }));
+  }
+
+  // ── Load older messages (cursor-based pagination) ────────────────────────
+
+  async loadMoreMessages(chatId: string, uid: string, before?: string) {
+    await this.assertMember(chatId, uid);
+    const query: Record<string, unknown> = { chatId };
+    if (before) {
+      const cursor = await this.messageRepository.findOne({
+        where: { id: before },
+        select: ['createdAt'],
+      });
+      if (cursor) {
+        query.createdAt = LessThan(cursor.createdAt);
+      }
+    }
+    const messages = await this.messageRepository.find({
+      where: query as any,
+      order: { createdAt: 'DESC' },
+      take: 50,
+    });
+    messages.reverse();
     return messages.map((m) => ({
       id: m.id,
       senderId: m.senderId,
@@ -176,6 +238,7 @@ export class ChatsService {
   // ── Send a message ────────────────────────────────────────────────────────
 
   async sendMessage(chatId: string, senderId: string, text: string) {
+    await this.assertMember(chatId, senderId);
     const message = this.messageRepository.create({
       chatId,
       senderId,
@@ -188,21 +251,49 @@ export class ChatsService {
     // Update denormalised preview on the chat row
     await this.chatRepository.update(chatId, {
       lastMessageText: text,
+      lastMessageSenderId: senderId,
+      lastMessageStatus: 'sent',
       lastMessageAt: saved.createdAt,
     });
 
+    // Increment unread count for all members except the sender
+    await this.dataSource
+      .createQueryBuilder()
+      .update(ChatMember)
+      .set({ unreadCount: () => '"unreadCount" + 1' })
+      .where('"chatId" = :chatId', { chatId })
+      .andWhere('"userUid" != :uid', { uid: senderId })
+      .execute();
+
+    // Fetch updated unread counts for all members (excluding sender)
+    const memberUnreads = await this.chatMemberRepository.find({
+      where: { chatId },
+      select: ['unreadCount'],
+      relations: { user: true },
+    });
+    const unreadByUid: Record<string, number> = {};
+    for (const m of memberUnreads) {
+      if (m.user?.uid !== senderId) {
+        unreadByUid[m.user.uid] = m.unreadCount;
+      }
+    }
+
     return {
-      id: saved.id,
-      senderId: saved.senderId,
-      text: saved.content,
-      sentAt: saved.createdAt,
-      status: saved.status,
+      message: {
+        id: saved.id,
+        senderId: saved.senderId,
+        text: saved.content,
+        sentAt: saved.createdAt,
+        status: saved.status,
+      },
+      unreadByUid,
     };
   }
 
   // ── Mark all messages in a chat as read for a user ───────────────────────
 
   async markRead(chatId: string, uid: string) {
+    await this.assertMember(chatId, uid);
     // Update unread counter for this member
     await this.chatMemberRepository.update(
       { chatId, user: { uid } },
@@ -228,6 +319,71 @@ export class ChatsService {
     return updated;
   }
 
+  // ── Leave a group chat (member leaves, admin deletes) ─────────────────────
+
+  async leaveGroup(chatId: string, uid: string) {
+    const chat = await this.chatRepository.findOne({
+      where: { id: chatId },
+      relations: { members: { user: true } },
+    });
+    if (!chat) throw new NotFoundException('Chat not found');
+
+    const member = chat.members.find((m) => m.user?.uid === uid);
+    if (!member) throw new ForbiddenException('Not a member of this chat');
+
+    const allMemberUids = chat.members.map((m) => m.user.uid);
+
+    // Private chat or admin leaving a group → delete the entire chat
+    if (!chat.isGroup || member.role === 'admin') {
+      await this.chatRepository.remove(chat);
+      return {
+        action: 'deleted' as const,
+        id: chatId,
+        memberUids: allMemberUids,
+      };
+    }
+
+    // Regular member leaving a group → just remove them from the chat
+    await this.chatMemberRepository.remove(member);
+    const updatedChat = await this.getChatById(chatId);
+    return {
+      action: 'removed' as const,
+      chatId,
+      uid,
+      updatedChat,
+    };
+  }
+
+  // ── Remove a member from a group (admin only) ─────────────────────────────
+
+  async removeMember(chatId: string, requesterUid: string, targetUid: string) {
+    const chat = await this.chatRepository.findOne({
+      where: { id: chatId },
+      relations: { members: { user: true } },
+    });
+    if (!chat) throw new NotFoundException('Chat not found');
+    if (!chat.isGroup) throw new ForbiddenException('Not a group chat');
+
+    const requesterMember = chat.members.find(
+      (m) => m.user?.uid === requesterUid,
+    );
+    if (!requesterMember)
+      throw new ForbiddenException('Not a member of this chat');
+    if (requesterMember.role !== 'admin')
+      throw new ForbiddenException('Only admins can remove members');
+
+    if (requesterUid === targetUid)
+      throw new ForbiddenException(
+        'Cannot remove yourself; use leaveGroup instead',
+      );
+
+    const targetMember = chat.members.find((m) => m.user?.uid === targetUid);
+    if (!targetMember) throw new NotFoundException('Member not found');
+
+    await this.chatMemberRepository.remove(targetMember);
+    return this.getChatById(chatId);
+  }
+
   // ── Search user ───────────────────────────────────────────────────────────
 
   async getUser(username: string) {
@@ -251,7 +407,10 @@ export class ChatsService {
 
     for (const chat of candidateChats.values()) {
       const chatUids = chat.members.map((m) => m.user.uid);
-      if (chatUids.length === uids.length && chatUids.every((u) => uids.includes(u))) {
+      if (
+        chatUids.length === uids.length &&
+        chatUids.every((u) => uids.includes(u))
+      ) {
         return chat;
       }
     }
@@ -262,11 +421,13 @@ export class ChatsService {
   // ── Private helper ────────────────────────────────────────────────────────
 
   private formatChat(chat: Chat, unreadCount: number) {
+    const adminUid = chat.members.find((m) => m.role === 'admin')?.user?.uid;
     return {
       id: chat.id,
       isGroup: chat.isGroup,
       name: chat.name ?? '',
       avatarUrl: chat.avatarUrl ?? '',
+      admin: adminUid,
       participants: chat.members.map((m) => ({
         user: {
           uid: m.user.uid,
@@ -279,6 +440,8 @@ export class ChatsService {
         },
       })),
       lastMessage: chat.lastMessageText ?? '',
+      lastMessageSenderId: chat.lastMessageSenderId ?? undefined,
+      lastMessageStatus: chat.lastMessageStatus ?? undefined,
       lastMessageAt: chat.lastMessageAt ?? chat.createdAt,
       unread: unreadCount,
     };

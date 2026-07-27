@@ -26,14 +26,19 @@ describe('ChatsController', () => {
   });
 
   describe('create', () => {
-    it('delegates to service.create', async () => {
+    it('delegates to service.create and forces caller into members+admin', async () => {
       const dto = { members: ['uid2'], admin: 'uid1' };
+      const req = { user: { userId: 'uid1' } } as any;
       service.create.mockResolvedValue({ id: 'chat-id' } as any);
 
-      const result = await controller.create(dto as any);
+      const result = await controller.create(dto, req);
 
       expect(result.id).toBe('chat-id');
-      expect(service.create).toHaveBeenCalledWith(dto);
+      expect(service.create).toHaveBeenCalledWith({
+        ...dto,
+        members: expect.arrayContaining(['uid1', 'uid2']),
+        admin: 'uid1',
+      });
     });
   });
 
@@ -58,7 +63,11 @@ describe('ChatsController', () => {
       const result = await controller.addMembers('chat-id', body, req);
 
       expect(result.id).toBe('chat-id');
-      expect(service.addMembers).toHaveBeenCalledWith('chat-id', ['uid3'], 'uid1');
+      expect(service.addMembers).toHaveBeenCalledWith(
+        'chat-id',
+        ['uid3'],
+        'uid1',
+      );
     });
   });
 });

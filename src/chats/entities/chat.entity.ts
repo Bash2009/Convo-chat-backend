@@ -35,6 +35,12 @@ export class Chat {
   @Column({ nullable: true })
   lastMessageText: string;
 
+  @Column({ nullable: true })
+  lastMessageSenderId: string;
+
+  @Column({ nullable: true, default: 'sent' })
+  lastMessageStatus: string;
+
   @Column({ type: 'timestamp', nullable: true })
   lastMessageAt: Date;
 

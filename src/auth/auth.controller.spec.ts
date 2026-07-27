@@ -41,7 +41,12 @@ describe('AuthController', () => {
   describe('login', () => {
     it('delegates to authService.login', async () => {
       const dto = { uid: 'u1' };
-      authService.login.mockResolvedValue({ uid: 'u1', email: 'a@b.com', access_token: 't', refresh_token: 't' });
+      authService.login.mockResolvedValue({
+        uid: 'u1',
+        email: 'a@b.com',
+        access_token: 't',
+        refresh_token: 't',
+      });
 
       const result = await controller.login(dto);
 
@@ -52,24 +57,46 @@ describe('AuthController', () => {
 
   describe('refresh', () => {
     it('delegates to authService.refreshToken', async () => {
-      const req = { user: { userId: 'uid1' } } as any;
-      authService.refreshToken.mockResolvedValue({ access_token: 't', refresh_token: 't' });
+      const req = {
+        user: { userId: 'uid1', refreshToken: 'old-refresh-token' },
+      } as any;
+      authService.refreshToken.mockResolvedValue({
+        access_token: 't',
+        refresh_token: 't',
+      });
 
       const result = await controller.refresh(req);
 
       expect(result.access_token).toBe('t');
-      expect(authService.refreshToken).toHaveBeenCalledWith('uid1');
+      expect(authService.refreshToken).toHaveBeenCalledWith(
+        'uid1',
+        'old-refresh-token',
+      );
     });
   });
 
   describe('logout', () => {
-    it('delegates to authService.logout', () => {
-      authService.logout.mockReturnValue({ message: 'Logged out successfully' });
+    it('delegates to authService.logout with bearer token', () => {
+      const req = { get: jest.fn().mockReturnValue('Bearer my-token') } as any;
+      authService.logout.mockReturnValue({
+        message: 'Logged out successfully',
+      });
 
-      const result = controller.logout();
+      const result = controller.logout(req);
 
       expect(result.message).toBe('Logged out successfully');
-      expect(authService.logout).toHaveBeenCalled();
+      expect(authService.logout).toHaveBeenCalledWith('my-token');
+    });
+
+    it('passes empty string when no auth header', () => {
+      const req = { get: jest.fn().mockReturnValue(undefined) } as any;
+      authService.logout.mockReturnValue({
+        message: 'Logged out successfully',
+      });
+
+      controller.logout(req);
+
+      expect(authService.logout).toHaveBeenCalledWith('');
     });
   });
 });
