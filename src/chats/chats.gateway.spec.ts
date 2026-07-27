@@ -388,7 +388,10 @@ describe('ChatsGateway', () => {
         sentAt: new Date(),
         status: 'sent',
       };
-      chatsService.sendMessage.mockResolvedValue(msg);
+      chatsService.sendMessage.mockResolvedValue({
+        message: msg,
+        unreadByUid: {},
+      });
       gateway.server.fetchSockets = jest.fn().mockResolvedValue([{}, {}]);
 
       const client = mockClient();
@@ -410,7 +413,10 @@ describe('ChatsGateway', () => {
         sentAt: new Date(),
         status: 'sent',
       };
-      chatsService.sendMessage.mockResolvedValue(msg);
+      chatsService.sendMessage.mockResolvedValue({
+        message: msg,
+        unreadByUid: {},
+      });
       gateway.server.fetchSockets = jest.fn().mockResolvedValue([{}, {}]);
 
       const client = mockClient();
@@ -419,6 +425,7 @@ describe('ChatsGateway', () => {
       expect(gateway.server.to).toHaveBeenCalledWith('c1');
       expect(gateway.server.emit).toHaveBeenCalledWith('messageStatus', {
         messageId: 'm1',
+        chatId: 'c1',
         status: 'delivered',
       });
     });
@@ -437,8 +444,15 @@ describe('ChatsGateway', () => {
 
       await gateway.markRead({ chatId: 'c1' } as any, client);
 
-      expect(gateway.server.to).toHaveBeenCalledWith('c1');
-      expect(gateway.server.emit).toHaveBeenCalledTimes(2);
+      expect(gateway.server.emit).toHaveBeenCalledWith('messageStatus', {
+        messageId: 'm1',
+        chatId: 'c1',
+        status: 'read',
+      });
+      expect(client.emit).toHaveBeenCalledWith('unreadUpdated', {
+        chatId: 'c1',
+        unread: 0,
+      });
     });
   });
 });

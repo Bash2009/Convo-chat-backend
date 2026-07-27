@@ -412,14 +412,21 @@ describe('ChatsService', () => {
       } as any;
       dataSource.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
+      chatMemberRepository.find.mockResolvedValue([
+        { user: { uid: 'uid2' }, unreadCount: 1 },
+      ] as any);
+
       const result = await service.sendMessage('chat-id', 'uid1', 'Hello');
 
-      expect(result.text).toBe('Hello');
+      expect(result.message.text).toBe('Hello');
+      expect(result.unreadByUid).toEqual({ uid2: 1 });
       expect(chatMemberRepository.findOne).toHaveBeenCalledWith({
         where: { chatId: 'chat-id', user: { uid: 'uid1' } },
       });
       expect(chatRepository.update).toHaveBeenCalledWith('chat-id', {
         lastMessageText: 'Hello',
+        lastMessageSenderId: 'uid1',
+        lastMessageStatus: 'sent',
         lastMessageAt: saved.createdAt,
       });
       expect(qb.execute).toHaveBeenCalled();

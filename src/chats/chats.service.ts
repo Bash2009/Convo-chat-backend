@@ -251,6 +251,8 @@ export class ChatsService {
     // Update denormalised preview on the chat row
     await this.chatRepository.update(chatId, {
       lastMessageText: text,
+      lastMessageSenderId: senderId,
+      lastMessageStatus: 'sent',
       lastMessageAt: saved.createdAt,
     });
 
@@ -263,12 +265,28 @@ export class ChatsService {
       .andWhere('"userUid" != :uid', { uid: senderId })
       .execute();
 
+    // Fetch updated unread counts for all members (excluding sender)
+    const memberUnreads = await this.chatMemberRepository.find({
+      where: { chatId },
+      select: ['unreadCount'],
+      relations: { user: true },
+    });
+    const unreadByUid: Record<string, number> = {};
+    for (const m of memberUnreads) {
+      if (m.user?.uid !== senderId) {
+        unreadByUid[m.user.uid] = m.unreadCount;
+      }
+    }
+
     return {
-      id: saved.id,
-      senderId: saved.senderId,
-      text: saved.content,
-      sentAt: saved.createdAt,
-      status: saved.status,
+      message: {
+        id: saved.id,
+        senderId: saved.senderId,
+        text: saved.content,
+        sentAt: saved.createdAt,
+        status: saved.status,
+      },
+      unreadByUid,
     };
   }
 
@@ -355,6 +373,8 @@ export class ChatsService {
         },
       })),
       lastMessage: chat.lastMessageText ?? '',
+      lastMessageSenderId: chat.lastMessageSenderId ?? undefined,
+      lastMessageStatus: chat.lastMessageStatus ?? undefined,
       lastMessageAt: chat.lastMessageAt ?? chat.createdAt,
       unread: unreadCount,
     };

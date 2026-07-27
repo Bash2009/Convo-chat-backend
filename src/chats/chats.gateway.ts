@@ -64,6 +64,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const uid = this.getUid(client);
       client.join(`user:${uid}`);
+      this.server.emit('userOnline', { uid });
       this.logger.log(`Client connected: ${client.id} (user:${uid})`);
     } catch {
       this.logger.warn(`Rejected unauthenticated socket: ${client.id}`);
@@ -72,6 +73,11 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   handleDisconnect(client: Socket) {
+    const data = client.data as Record<string, unknown> | undefined;
+    const uid = data?.uid as string | undefined;
+    if (uid) {
+      this.server.emit('userOffline', { uid });
+    }
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
@@ -246,16 +252,17 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('sendMessage')
   async sendMessage(
-    @MessageBody() data: { chatId: string; text: string },
+    @MessageBody() data: { chatId: string; text: string; senderId?: string },
     @ConnectedSocket() client: Socket,
   ) {
     try {
       const senderId = this.getUid(client);
-      const message = await this.chatsService.sendMessage(
+      const result = await this.chatsService.sendMessage(
         data.chatId,
         senderId,
         data.text,
       );
+      const { message, unreadByUid } = result;
       this.server
         .to(data.chatId)
         .emit('newMessage', { ...message, chatId: data.chatId });
@@ -265,7 +272,15 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (socketsInRoom > 1) {
         this.server.to(data.chatId).emit('messageStatus', {
           messageId: message.id,
+          chatId: data.chatId,
           status: 'delivered',
+        });
+      }
+
+      for (const [uid, unread] of Object.entries(unreadByUid)) {
+        this.server.to(`user:${uid}`).emit('unreadUpdated', {
+          chatId: data.chatId,
+          unread,
         });
       }
     } catch (err) {
@@ -279,7 +294,7 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('markRead')
   async markRead(
-    @MessageBody() data: { chatId: string },
+    @MessageBody() data: { chatId: string; uid?: string },
     @ConnectedSocket() client: Socket,
   ) {
     try {
@@ -288,9 +303,14 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       for (const msg of readMessages) {
         this.server.to(data.chatId).emit('messageStatus', {
           messageId: msg.id,
+          chatId: data.chatId,
           status: 'read',
         });
       }
+      client.emit('unreadUpdated', {
+        chatId: data.chatId,
+        unread: 0,
+      });
     } catch (err) {
       this.logger.error(`markRead error: ${(err as Error).message}`);
     }
