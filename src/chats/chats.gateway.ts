@@ -58,8 +58,9 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   handleConnection(client: Socket) {
     try {
-      this.getUid(client);
-      this.logger.log(`Client connected: ${client.id}`);
+      const uid = this.getUid(client);
+      client.join(`user:${uid}`);
+      this.logger.log(`Client connected: ${client.id} (user:${uid})`);
     } catch {
       this.logger.warn(`Rejected unauthenticated socket: ${client.id}`);
       client.disconnect(true);
@@ -123,7 +124,9 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? currentMembers
         : [...currentMembers, uid];
       const newChat = await this.chatsService.create({ ...dto, members });
-      this.server.emit('chatCreated', newChat);
+      const participants = newChat.participants as Array<{ user: { uid: string } }>;
+      for (const p of participants)
+        this.server.to(`user:${p.user.uid}`).emit('chatCreated', newChat);
     } catch (err) {
       this.logger.error(`createChat error: ${(err as Error).message}`);
       client.emit('error', {
@@ -192,8 +195,10 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     try {
       const uid = this.getUid(client);
+      const members = await this.chatsService.getMemberUids(data.chatId);
       const result = await this.chatsService.delete(data.chatId, uid);
-      this.server.emit('chatDeleted', result);
+      for (const memberUid of members)
+        this.server.to(`user:${memberUid}`).emit('chatDeleted', result);
     } catch (err) {
       this.logger.error(`deleteChat error: ${(err as Error).message}`);
       client.emit('error', { event: 'deleteChat', message: 'Failed to delete chat' });
@@ -212,7 +217,9 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       await validateOrReject(dto);
 
       const chat = await this.chatsService.addMembers(data.chatId, data.members, uid);
-      this.server.emit('memberAdded', chat);
+      const participants = chat.participants as Array<{ user: { uid: string } }>;
+      for (const p of participants)
+        this.server.to(`user:${p.user.uid}`).emit('memberAdded', chat);
     } catch (err) {
       this.logger.error(`addMember error: ${(err as Error).message}`);
       client.emit('error', { event: 'addMember', message: 'Failed to add member' });

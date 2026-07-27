@@ -136,6 +136,17 @@ export class ChatsService {
     return this.getChatById(chatId);
   }
 
+  // ── Get member UIDs for a chat (for targeted socket broadcasts) ─────────
+
+  async getMemberUids(chatId: string): Promise<string[]> {
+    const members = await this.chatMemberRepository.find({
+      where: { chatId },
+      select: ['id'],
+      relations: { user: true },
+    });
+    return members.map((m) => m.user.uid);
+  }
+
   // ── Get all chats for a user ─────────────────────────────────────────────
 
   async getChats(uid: string) {
