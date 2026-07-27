@@ -48,7 +48,10 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const payload = this.jwtService.verify<{ sub: string }>(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
-      client.data = { ...((client.data ?? {}) as Record<string, unknown>), uid: payload.sub };
+      client.data = {
+        ...((client.data ?? {}) as Record<string, unknown>),
+        uid: payload.sub,
+      };
       return payload.sub;
     } catch {
       throw new WsException('Invalid or expired token');

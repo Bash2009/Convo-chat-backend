@@ -108,7 +108,10 @@ describe('AuthService', () => {
       expect(jwtService.verify).toHaveBeenCalledWith('old-refresh-token', {
         secret: 'secret',
       });
-      expect(tokenBlacklist.blacklist).toHaveBeenCalledWith('old-jti', 7 * 24 * 60 * 60);
+      expect(tokenBlacklist.blacklist).toHaveBeenCalledWith(
+        'old-jti',
+        7 * 24 * 60 * 60,
+      );
       expect(result).toEqual({
         access_token: 'new-token',
         refresh_token: 'new-token',
@@ -139,12 +142,17 @@ describe('AuthService', () => {
       expect(jwtService.verify).toHaveBeenCalledWith('Bearer token', {
         secret: 'jwt-secret',
       });
-      expect(tokenBlacklist.blacklist).toHaveBeenCalledWith('token-jti', 15 * 60);
+      expect(tokenBlacklist.blacklist).toHaveBeenCalledWith(
+        'token-jti',
+        15 * 60,
+      );
       expect(result).toEqual({ message: 'Logged out successfully' });
     });
 
     it('succeeds even if token is invalid', async () => {
-      jwtService.verify.mockImplementation(() => { throw new Error(); });
+      jwtService.verify.mockImplementation(() => {
+        throw new Error();
+      });
 
       const result = await service.logout('invalid-token');
 

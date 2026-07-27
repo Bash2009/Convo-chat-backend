@@ -9,8 +9,6 @@ describe('ChatsGateway', () => {
   let gateway: ChatsGateway;
   let chatsService: jest.Mocked<ChatsService>;
   let jwtService: jest.Mocked<JwtService>;
-  let configService: jest.Mocked<ConfigService>;
-
   const mockClient = () => {
     const emit = jest.fn();
     const join = jest.fn();
@@ -70,7 +68,6 @@ describe('ChatsGateway', () => {
     gateway = module.get(ChatsGateway);
     chatsService = module.get(ChatsService);
     jwtService = module.get(JwtService);
-    configService = module.get(ConfigService);
 
     gateway.server = mockServer() as any;
   });
@@ -207,10 +204,7 @@ describe('ChatsGateway', () => {
       jwtService.verify.mockReturnValue({ sub: 'uid1' });
       const chat = {
         id: 'c1',
-        participants: [
-          { user: { uid: 'uid1' } },
-          { user: { uid: 'uid2' } },
-        ],
+        participants: [{ user: { uid: 'uid1' } }, { user: { uid: 'uid2' } }],
       };
       chatsService.create.mockResolvedValue(chat as any);
       const client = mockClient();
@@ -227,7 +221,10 @@ describe('ChatsGateway', () => {
 
     it('ensures creator is always in members', async () => {
       jwtService.verify.mockReturnValue({ sub: 'uid1' });
-      chatsService.create.mockResolvedValue({ id: 'c1', participants: [] } as any);
+      chatsService.create.mockResolvedValue({
+        id: 'c1',
+        participants: [],
+      } as any);
       const client = mockClient();
 
       await gateway.create({ members: ['uid2'], admin: 'uid1' } as any, client);
@@ -294,10 +291,7 @@ describe('ChatsGateway', () => {
       jwtService.verify.mockReturnValue({ sub: 'uid1' });
       const chat = {
         id: 'c1',
-        participants: [
-          { user: { uid: 'uid1' } },
-          { user: { uid: 'uid3' } },
-        ],
+        participants: [{ user: { uid: 'uid1' } }, { user: { uid: 'uid3' } }],
       };
       chatsService.addMembers.mockResolvedValue(chat as any);
       const client = mockClient();

@@ -7,7 +7,6 @@ import { ProfileService } from '../profile/profile.service';
 import { Chat } from './entities/chat.entity';
 import { ChatMember } from './entities/chat-members.entity';
 import { Message } from './entities/messages.entity';
-import { User } from '../user/entities/user.entity';
 
 describe('ChatsService', () => {
   let service: ChatsService;
