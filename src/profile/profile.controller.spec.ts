@@ -28,7 +28,13 @@ describe('ProfileController', () => {
 
   describe('create', () => {
     it('delegates to service.create with authenticated user', async () => {
-      const dto = { userName: 'john', firstName: 'John', lastName: 'Doe', bio: 'Hi', location: 'NYC' } as any;
+      const dto = {
+        userName: 'john',
+        firstName: 'John',
+        lastName: 'Doe',
+        bio: 'Hi',
+        location: 'NYC',
+      } as any;
       const avatar = { buffer: Buffer.from('') } as Express.Multer.File;
       const req = { user: { userId: 'uid1' } } as any;
       service.create.mockResolvedValue(dto);
@@ -54,7 +60,10 @@ describe('ProfileController', () => {
 
   describe('findOneByName', () => {
     it('delegates to service.findUserByName', async () => {
-      service.findUserByName.mockResolvedValue({ userExists: true, profile: {} as any });
+      service.findUserByName.mockResolvedValue({
+        userExists: true,
+        profile: {} as any,
+      });
 
       const result = await controller.findOneByName('johndoe');
 

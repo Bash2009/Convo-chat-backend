@@ -16,7 +16,9 @@ export class TokenBlacklistService {
   async blacklist(jti: string, ttlSeconds: number): Promise<void> {
     if (this.redis) {
       await this.redis.set(`bl:${jti}`, '1', 'EX', ttlSeconds).catch((err) => {
-        this.logger.error(`Redis blacklist set failed: ${(err as Error).message}`);
+        this.logger.error(
+          `Redis blacklist set failed: ${(err as Error).message}`,
+        );
       });
     }
     this.inMemory.add(jti);

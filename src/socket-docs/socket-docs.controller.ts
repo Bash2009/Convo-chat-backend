@@ -1,5 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiExtraModels, ApiProperty } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiExtraModels,
+  ApiProperty,
+} from '@nestjs/swagger';
 
 class SocketChatEvent {
   @ApiProperty()

@@ -8,7 +8,11 @@ import {
   ValidatorConstraintInterface,
   ValidationArguments,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional, ApiHideProperty } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  ApiHideProperty,
+} from '@nestjs/swagger';
 
 @ValidatorConstraint({ name: 'hasParticipant', async: false })
 class HasParticipantConstraint implements ValidatorConstraintInterface {

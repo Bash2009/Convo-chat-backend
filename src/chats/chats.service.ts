@@ -48,7 +48,6 @@ export class ChatsService {
     await queryRunner.startTransaction();
 
     try {
-
       const users = await queryRunner.manager.findBy(User, {
         uid: In(allUids),
       });
@@ -93,9 +92,13 @@ export class ChatsService {
     });
     if (!chat) throw new NotFoundException('Chat not found');
 
-    const requesterMember = chat.members.find((m) => m.user?.uid === requesterUid);
-    if (!requesterMember) throw new ForbiddenException('Not a member of this chat');
-    if (chat.isGroup && requesterMember.role !== 'admin') throw new ForbiddenException('Only admins can delete a group chat');
+    const requesterMember = chat.members.find(
+      (m) => m.user?.uid === requesterUid,
+    );
+    if (!requesterMember)
+      throw new ForbiddenException('Not a member of this chat');
+    if (chat.isGroup && requesterMember.role !== 'admin')
+      throw new ForbiddenException('Only admins can delete a group chat');
 
     await this.chatRepository.remove(chat);
     return { id: chatId, deleted: true };
@@ -109,11 +112,16 @@ export class ChatsService {
       relations: { members: { user: true } },
     });
     if (!chat) throw new NotFoundException('Chat not found');
-    if (!chat.isGroup) throw new ForbiddenException('Cannot add members to a private chat');
+    if (!chat.isGroup)
+      throw new ForbiddenException('Cannot add members to a private chat');
 
-    const requesterMember = chat.members.find((m) => m.user?.uid === requesterUid);
-    if (!requesterMember) throw new ForbiddenException('Not a member of this chat');
-    if (requesterMember.role !== 'admin') throw new ForbiddenException('Only admins can add members');
+    const requesterMember = chat.members.find(
+      (m) => m.user?.uid === requesterUid,
+    );
+    if (!requesterMember)
+      throw new ForbiddenException('Not a member of this chat');
+    if (requesterMember.role !== 'admin')
+      throw new ForbiddenException('Only admins can add members');
 
     const existingUids = new Set(chat.members.map((m) => m.user.uid));
     const toAdd = newUids.filter((u) => !existingUids.has(u));
@@ -316,7 +324,10 @@ export class ChatsService {
 
     for (const chat of candidateChats.values()) {
       const chatUids = chat.members.map((m) => m.user.uid);
-      if (chatUids.length === uids.length && chatUids.every((u) => uids.includes(u))) {
+      if (
+        chatUids.length === uids.length &&
+        chatUids.every((u) => uids.includes(u))
+      ) {
         return chat;
       }
     }

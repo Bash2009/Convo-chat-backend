@@ -10,7 +10,12 @@ import { TokenBlacklistService } from './token-blacklist.service';
 
 @Module({
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RefreshTokenStrategy, TokenBlacklistService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    RefreshTokenStrategy,
+    TokenBlacklistService,
+  ],
   imports: [
     UserModule,
     JwtModule.registerAsync({

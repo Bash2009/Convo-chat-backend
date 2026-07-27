@@ -124,7 +124,9 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? currentMembers
         : [...currentMembers, uid];
       const newChat = await this.chatsService.create({ ...dto, members });
-      const participants = newChat.participants as Array<{ user: { uid: string } }>;
+      const participants = newChat.participants as Array<{
+        user: { uid: string };
+      }>;
       for (const p of participants)
         this.server.to(`user:${p.user.uid}`).emit('chatCreated', newChat);
     } catch (err) {
@@ -201,7 +203,10 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(`user:${memberUid}`).emit('chatDeleted', result);
     } catch (err) {
       this.logger.error(`deleteChat error: ${(err as Error).message}`);
-      client.emit('error', { event: 'deleteChat', message: 'Failed to delete chat' });
+      client.emit('error', {
+        event: 'deleteChat',
+        message: 'Failed to delete chat',
+      });
     }
   }
 
@@ -216,13 +221,22 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const dto = plainToInstance(AddMembersDto, data);
       await validateOrReject(dto);
 
-      const chat = await this.chatsService.addMembers(data.chatId, data.members, uid);
-      const participants = chat.participants as Array<{ user: { uid: string } }>;
+      const chat = await this.chatsService.addMembers(
+        data.chatId,
+        data.members,
+        uid,
+      );
+      const participants = chat.participants as Array<{
+        user: { uid: string };
+      }>;
       for (const p of participants)
         this.server.to(`user:${p.user.uid}`).emit('memberAdded', chat);
     } catch (err) {
       this.logger.error(`addMember error: ${(err as Error).message}`);
-      client.emit('error', { event: 'addMember', message: 'Failed to add member' });
+      client.emit('error', {
+        event: 'addMember',
+        message: 'Failed to add member',
+      });
     }
   }
 

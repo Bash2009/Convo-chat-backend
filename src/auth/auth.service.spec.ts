@@ -3,7 +3,10 @@ import { AuthService } from './auth.service';
 import { UserService } from '../user/user.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -47,16 +50,20 @@ describe('AuthService', () => {
 
       const result = await service.register(dto);
 
-      expect(result).toEqual({ ...dto, access_token: 'token', refresh_token: 'token' });
+      expect(result).toEqual({
+        ...dto,
+        access_token: 'token',
+        refresh_token: 'token',
+      });
       expect(userService.create).toHaveBeenCalledWith(dto);
     });
 
     it('throws InternalServerErrorException on failure', async () => {
       userService.create.mockRejectedValue(new Error('db error'));
 
-      await expect(service.register({ uid: 'u1', email: 'a@b.com' })).rejects.toThrow(
-        InternalServerErrorException,
-      );
+      await expect(
+        service.register({ uid: 'u1', email: 'a@b.com' }),
+      ).rejects.toThrow(InternalServerErrorException);
     });
   });
 
@@ -75,7 +82,9 @@ describe('AuthService', () => {
     it('throws BadRequestException when user not found', async () => {
       userService.findOneById.mockResolvedValue(null);
 
-      await expect(service.login({ uid: 'unknown' })).rejects.toThrow(BadRequestException);
+      await expect(service.login({ uid: 'unknown' })).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -86,7 +95,10 @@ describe('AuthService', () => {
 
       const result = await service.refreshToken('uid1');
 
-      expect(result).toEqual({ access_token: 'new-token', refresh_token: 'new-token' });
+      expect(result).toEqual({
+        access_token: 'new-token',
+        refresh_token: 'new-token',
+      });
     });
   });
 
