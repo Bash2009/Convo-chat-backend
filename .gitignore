@@ -4,4 +4,6 @@
 /build
 
 .env
+.env.production
+.env.test
 .DS_Store
