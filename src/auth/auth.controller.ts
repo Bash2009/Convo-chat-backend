@@ -35,16 +35,18 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'New token pair issued' })
   @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
   refresh(@Req() req: Request) {
-    const user = req['user'] as { userId: string };
-    return this.authService.refreshToken(user.userId);
+    const user = req['user'] as { userId: string; refreshToken: string };
+    return this.authService.refreshToken(user.userId, user.refreshToken);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  @ApiOperation({ summary: 'Logout (client discards tokens)' })
+  @ApiOperation({ summary: 'Logout (revoke tokens)' })
   @ApiBearerAuth('access-token')
   @ApiResponse({ status: 201, description: 'Logged out' })
-  logout() {
-    return this.authService.logout();
+  logout(@Req() req: Request) {
+    const authHeader = req.get('Authorization');
+    const token = authHeader?.split(' ')[1] ?? '';
+    return this.authService.logout(token);
   }
 }

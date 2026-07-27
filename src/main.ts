@@ -1,6 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { IoAdapter } from '@nestjs/platform-socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { Redis } from 'ioredis';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -32,6 +35,21 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
+
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    const pubClient = new Redis(redisUrl);
+    const subClient = pubClient.duplicate();
+    app.useWebSocketAdapter(
+      new (class extends IoAdapter {
+        createIOServer(port: number, options?: any) {
+          const server = super.createIOServer(port, options);
+          server.adapter(createAdapter(pubClient, subClient));
+          return server;
+        }
+      })(app),
+    );
+  }
 
   await app.listen(process.env.PORT ?? 3000);
 }

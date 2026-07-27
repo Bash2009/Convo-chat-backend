@@ -246,6 +246,15 @@ export class ChatsService {
       lastMessageAt: saved.createdAt,
     });
 
+    // Increment unread count for all members except the sender
+    await this.dataSource
+      .createQueryBuilder()
+      .update(ChatMember)
+      .set({ unreadCount: () => '"unreadCount" + 1' })
+      .where('"chatId" = :chatId', { chatId })
+      .andWhere('"userUid" != :uid', { uid: senderId })
+      .execute();
+
     return {
       id: saved.id,
       senderId: saved.senderId,

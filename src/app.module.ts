@@ -6,6 +6,8 @@ import { UserModule } from './user/user.module';
 import { ProfileModule } from './profile/profile.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { RedisModule } from './redis/redis.module';
+import { QueueModule } from './queue/queue.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { SocketDocsModule } from './socket-docs/socket-docs.module';
 import { ChatsModule } from './chats/chats.module';
@@ -36,6 +38,8 @@ import { ChatsModule } from './chats/chats.module';
         // },
       }),
     }),
+    RedisModule,
+    QueueModule,
     CloudinaryModule,
     SocketDocsModule,
     ChatsModule,
