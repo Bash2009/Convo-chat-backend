@@ -319,6 +319,41 @@ export class ChatsService {
     return updated;
   }
 
+  // ── Leave a group chat (member leaves, admin deletes) ─────────────────────
+
+  async leaveGroup(chatId: string, uid: string) {
+    const chat = await this.chatRepository.findOne({
+      where: { id: chatId },
+      relations: { members: { user: true } },
+    });
+    if (!chat) throw new NotFoundException('Chat not found');
+
+    const member = chat.members.find((m) => m.user?.uid === uid);
+    if (!member) throw new ForbiddenException('Not a member of this chat');
+
+    const allMemberUids = chat.members.map((m) => m.user.uid);
+
+    // Private chat or admin leaving a group → delete the entire chat
+    if (!chat.isGroup || member.role === 'admin') {
+      await this.chatRepository.remove(chat);
+      return {
+        action: 'deleted' as const,
+        id: chatId,
+        memberUids: allMemberUids,
+      };
+    }
+
+    // Regular member leaving a group → just remove them from the chat
+    const remainingUids = allMemberUids.filter((u) => u !== uid);
+    await this.chatMemberRepository.remove(member);
+    return {
+      action: 'removed' as const,
+      chatId,
+      uid,
+      memberUids: remainingUids,
+    };
+  }
+
   // ── Search user ───────────────────────────────────────────────────────────
 
   async getUser(username: string) {

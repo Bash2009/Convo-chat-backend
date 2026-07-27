@@ -250,6 +250,39 @@ export class ChatsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @SubscribeMessage('leaveGroup')
+  async leaveGroup(
+    @MessageBody() data: { chatId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const uid = this.getUid(client);
+      const result = await this.chatsService.leaveGroup(data.chatId, uid);
+
+      if (result.action === 'deleted') {
+        for (const memberUid of result.memberUids)
+          this.server.to(`user:${memberUid}`).emit('chatDeleted', {
+            id: data.chatId,
+            deleted: true,
+          });
+      } else {
+        client.leave(data.chatId);
+        client.emit('memberRemoved', { chatId: data.chatId, uid });
+        for (const memberUid of result.memberUids)
+          this.server.to(`user:${memberUid}`).emit('memberRemoved', {
+            chatId: data.chatId,
+            uid,
+          });
+      }
+    } catch (err) {
+      this.logger.error(`leaveGroup error: ${(err as Error).message}`);
+      client.emit('error', {
+        event: 'leaveGroup',
+        message: 'Failed to leave group',
+      });
+    }
+  }
+
   @SubscribeMessage('sendMessage')
   async sendMessage(
     @MessageBody() data: { chatId: string; text: string; senderId?: string },

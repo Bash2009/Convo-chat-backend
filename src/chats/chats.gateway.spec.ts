@@ -49,6 +49,7 @@ describe('ChatsGateway', () => {
             create: jest.fn(),
             delete: jest.fn(),
             addMembers: jest.fn(),
+            leaveGroup: jest.fn(),
             getMessages: jest.fn(),
             sendMessage: jest.fn(),
             markRead: jest.fn(),
@@ -452,6 +453,62 @@ describe('ChatsGateway', () => {
       expect(client.emit).toHaveBeenCalledWith('unreadUpdated', {
         chatId: 'c1',
         unread: 0,
+      });
+    });
+  });
+
+  // ── leaveGroup ──────────────────────────────────────────────────────────────
+
+  describe('leaveGroup', () => {
+    it('broadcasts chatDeleted when admin leaves', async () => {
+      jwtService.verify.mockReturnValue({ sub: 'uid1' });
+      chatsService.leaveGroup.mockResolvedValue({
+        action: 'deleted',
+        id: 'c1',
+        memberUids: ['uid1', 'uid2'],
+      });
+      const client = mockClient();
+
+      await gateway.leaveGroup({ chatId: 'c1' } as any, client);
+
+      expect(gateway.server.emit).toHaveBeenCalledWith('chatDeleted', {
+        id: 'c1',
+        deleted: true,
+      });
+    });
+
+    it('broadcasts memberRemoved when regular member leaves', async () => {
+      jwtService.verify.mockReturnValue({ sub: 'uid1' });
+      chatsService.leaveGroup.mockResolvedValue({
+        action: 'removed',
+        chatId: 'c1',
+        uid: 'uid1',
+        memberUids: ['uid2'],
+      });
+      const client = mockClient();
+
+      await gateway.leaveGroup({ chatId: 'c1' } as any, client);
+
+      expect(client.emit).toHaveBeenCalledWith('memberRemoved', {
+        chatId: 'c1',
+        uid: 'uid1',
+      });
+      expect(gateway.server.emit).toHaveBeenCalledWith('memberRemoved', {
+        chatId: 'c1',
+        uid: 'uid1',
+      });
+    });
+
+    it('emits error on failure', async () => {
+      jwtService.verify.mockReturnValue({ sub: 'uid1' });
+      chatsService.leaveGroup.mockRejectedValue(new Error('not found'));
+      const client = mockClient();
+
+      await gateway.leaveGroup({ chatId: 'c1' } as any, client);
+
+      expect(client.emit).toHaveBeenCalledWith('error', {
+        event: 'leaveGroup',
+        message: 'Failed to leave group',
       });
     });
   });
