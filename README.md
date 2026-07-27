@@ -1,98 +1,245 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Chat App API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A production-grade real-time messaging API built with **NestJS 11**, **PostgreSQL**, **Socket.IO**, **Redis**, and **TypeORM**. Features JWT authentication, group chats, message delivery tracking, online presence, Cloudinary image uploads, and BullMQ background job infrastructure.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Tech Stack
 
-## Description
+| Layer | Technology |
+|-------|-----------|
+| Framework | [NestJS](https://nestjs.com/) 11 |
+| Language | TypeScript 5.7 |
+| Database | PostgreSQL 16 (via TypeORM with migrations) |
+| Real-time | Socket.IO (Redis adapter for horizontal scaling) |
+| Cache | Redis (optional, graceful fallback to in-memory) |
+| Auth | JWT (access + refresh token rotation with blacklisting) |
+| File Storage | Cloudinary |
+| Background Jobs | BullMQ (queue infrastructure ready) |
+| Testing | Jest (unit + e2e) |
+| CI/CD | GitHub Actions (lint → typecheck → test → build) |
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Architecture
 
-## Project setup
-
-```bash
-$ npm install
+```
+Client (Socket.IO)
+    │
+    ▼
+ChatsGateway ──► ChatsService ──► TypeORM ──► PostgreSQL
+    │               │
+    │               ├── ProfileService ──► Cloudinary
+    │               └── UserService
+    │
+    ▼
+Server.emit()  ──► All connected clients
 ```
 
-## Compile and run the project
+- **Monolithic NestJS application** with modular architecture (Auth, User, Profile, Chats, Cloudinary, Redis)
+- **Socket.IO** handles all real-time communication — ChatList owns a single shared connection, ChatRoom only joins/leaves rooms
+- **REST** endpoints for auth (register/login/refresh/logout), profile CRUD, and chat management
+- **Optional Redis** for JWT blacklist persistence, Socket.IO pub/sub adapter, and BullMQ queue backend
 
-```bash
-# development
-$ npm run start
+## Features
 
-# watch mode
-$ npm run start:dev
+### Authentication & Authorization
+- Register/login with Firebase UID
+- JWT access tokens (15 min) + refresh tokens (7 day) with rotation
+- Token blacklisting on logout (Redis with in-memory fallback)
+- Global `ValidationPipe` with whitelist and transform
 
-# production mode
-$ npm run start:prod
+### Real-time Messaging
+- **Socket.IO** with automatic room management (`user:<uid>` for presence, `chatId` for chat rooms)
+- Join/leave chat rooms, send/receive messages in real-time
+- Cursor-based message pagination (50 messages per page)
+- Message status tracking: `sent` → `delivered` → `read`
+- Denormalized chat preview fields for fast sidebar queries
+- Unread count tracking per user per chat
+
+### Online Presence
+- `userOnline` / `userOffline` events emitted on socket connect/disconnect
+- Green dot displayed in chat list, chat header, group info panel, and profile view
+
+### Profile Management
+- Create and update user profiles with Cloudinary avatar uploads
+- Search profiles by UID or username
+- Profile view page at `GET /profile/name/:username`
+
+### Group Chats
+- Create private (dedup detection) or group chats
+- Admin roles — only admins can delete groups or add members
+- Group info panel with member list, names, avatars, and online status
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 22+
+- PostgreSQL 16
+- Redis (optional, for production features)
+
+### Environment Variables
+
+Copy `.env` to `.env.production` and configure:
+
+```env
+# Database
+DATABASE_URL=postgresql://postgres:pass1234@localhost:5432/chat_app
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=pass1234
+DB_NAME=chat_app
+
+# JWT
+JWT_SECRET=your-jwt-secret
+JWT_REFRESH_SECRET=your-jwt-refresh-secret
+
+# Cloudinary
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
+
+# Redis (optional)
+REDIS_URL=redis://localhost:6379
+
+# App
+FRONTEND_URL=http://localhost:5173
+PORT=3000
+NODE_ENV=development
 ```
 
-## Run tests
+### Install & Run
 
 ```bash
-# unit tests
-$ npm run test
+# Install dependencies
+npm install
 
-# e2e tests
-$ npm run test:e2e
+# Start database (Docker)
+docker compose up -d
 
-# test coverage
-$ npm run test:cov
+# Development
+npm run start:dev
+
+# Production build
+npm run build
+npm run start:prod
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Run Migrations
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run migration:run
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## API Endpoints
 
-## Resources
+### Health
 
-Check out a few resources that may come in handy when working with NestJS:
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/` | No | Health check |
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### Auth
 
-## Support
+| Method | Path | Auth | Body | Description |
+|--------|------|------|------|-------------|
+| POST | `/auth/register` | No | `{ uid, email }` | Register user |
+| POST | `/auth/login` | No | `{ uid }` | Login by Firebase UID |
+| POST | `/auth/refresh` | Refresh | — | Rotate token pair |
+| POST | `/auth/logout` | JWT | — | Blacklist current token |
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### Profile
 
-## Stay in touch
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/profile/create` | JWT | Create profile with avatar upload |
+| PATCH | `/profile/update` | JWT | Update profile/avatar |
+| GET | `/profile/id/:uid` | JWT | Get profile by UID |
+| GET | `/profile/name/:username` | JWT | Get profile by username |
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### Chats
 
-## License
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/create` | JWT | Create a chat |
+| DELETE | `/chats/:id` | JWT | Delete a chat (admin-only for groups) |
+| PATCH | `/chats/:id/members` | JWT | Add members to group chat |
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+### Swagger Docs
+
+`GET /api/docs` — Interactive API documentation with Bearer JWT auth.
+
+## Socket.IO Events
+
+### Client → Server
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `getChats` | `{ username }` | Fetch all user chats |
+| `getUser` | `{ username }` | Search user by username |
+| `createChat` | `CreateChatDto` | Create private or group chat |
+| `joinChat` | `{ chatId }` | Join chat room |
+| `leaveChat` | `{ chatId }` | Leave chat room |
+| `loadMoreMessages` | `{ chatId, before? }` | Paginate older messages |
+| `sendMessage` | `{ chatId, text }` | Send a message |
+| `markRead` | `{ chatId }` | Mark messages as read |
+| `deleteChat` | `{ chatId }` | Delete a conversation |
+| `addMember` | `{ chatId, members }` | Add members to group |
+
+### Server → Client
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `chats` | `ChatStructure[]` | Full chat list |
+| `chatCreated` | `ChatStructure` | New chat created |
+| `chatDeleted` | `{ id }` | Chat was deleted |
+| `memberAdded` | `ChatStructure` | Member added to group |
+| `newMessage` | `Message & { chatId }` | New message |
+| `messages` | `Message[]` | Message history (joinChat response) |
+| `moreMessages` | `Message[]` | Older messages (pagination) |
+| `messageStatus` | `{ messageId, chatId, status }` | Status update |
+| `userSearch` | `{ userExists, profile? }` | User search result |
+| `unreadUpdated` | `{ chatId, unread }` | Unread count sync |
+| `userOnline` | `{ uid }` | User came online |
+| `userOffline` | `{ uid }` | User went offline |
+| `error` | `{ event, message }` | Error response |
+
+## Testing
+
+```bash
+# Unit tests
+npm test
+
+# Watch mode
+npm run test:watch
+
+# Coverage
+npm run test:cov
+
+# E2E tests
+npm run test:e2e
+```
+
+## CI/CD
+
+GitHub Actions runs on every push/PR:
+
+1. **Lint** — ESLint with TypeScript rules
+2. **Type check** — `tsc --noEmit`
+3. **Test** — Jest unit tests
+4. **Build** — `nest build`
+
+All four stages must pass before merging.
+
+## Project Structure
+
+```
+src/
+├── auth/           # Authentication, JWT strategies, guards
+├── chats/          # Real-time messaging, chat management, gateway
+├── cloudinary/     # Cloudinary image upload integration
+├── profile/        # User profile CRUD
+├── user/           # User entity and service
+├── redis/          # Redis client provider
+├── queue/          # BullMQ queue configuration
+├── app.module.ts   # Root module
+└── main.ts         # Entry point, CORS, Swagger, ValidationPipe
+```

@@ -12,7 +12,10 @@ describe('JwtStrategy', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         JwtStrategy,
-        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-secret') } },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn().mockReturnValue('test-secret') },
+        },
         { provide: UserService, useValue: { findOneById: jest.fn() } },
       ],
     }).compile();
@@ -23,7 +26,10 @@ describe('JwtStrategy', () => {
 
   describe('validate', () => {
     it('returns user object when user exists', async () => {
-      userService.findOneById.mockResolvedValue({ uid: 'uid1', email: 'a@b.com' } as any);
+      userService.findOneById.mockResolvedValue({
+        uid: 'uid1',
+        email: 'a@b.com',
+      } as any);
 
       const result = await strategy.validate({ sub: 'uid1', email: 'a@b.com' });
 
@@ -33,7 +39,9 @@ describe('JwtStrategy', () => {
     it('throws UnauthorizedException when user not found', async () => {
       userService.findOneById.mockResolvedValue(null);
 
-      await expect(strategy.validate({ sub: 'unknown' })).rejects.toThrow(UnauthorizedException);
+      await expect(strategy.validate({ sub: 'unknown' })).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('returns null email when not provided', async () => {

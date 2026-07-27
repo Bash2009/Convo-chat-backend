@@ -3,12 +3,15 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 import { UserService } from 'src/user/user.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { LoginDto } from './dto/login.dto';
+import { TokenBlacklistService } from './token-blacklist.service';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class AuthService {
@@ -18,20 +21,25 @@ export class AuthService {
     private userService: UserService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private tokenBlacklist: TokenBlacklistService,
   ) {}
 
-  // Returns [access_token, refresh_token]
-  private async getTokens(uid: string) {
+  private async getTokens(uid: string, oldJti?: string) {
+    if (oldJti) {
+      await this.tokenBlacklist.blacklist(oldJti, 7 * 24 * 60 * 60);
+    }
+
+    const jwtid = uuidv4();
     const [access_token, refresh_token] = await Promise.all([
       this.jwtService.signAsync(
-        { sub: uid },
+        { sub: uid, jti: jwtid },
         {
           secret: this.configService.get<string>('JWT_SECRET'),
           expiresIn: '15m',
         },
       ),
       this.jwtService.signAsync(
-        { sub: uid },
+        { sub: uid, jti: jwtid },
         {
           secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
           expiresIn: '7d',
@@ -62,13 +70,31 @@ export class AuthService {
     return { ...user, ...tokens };
   }
 
-  async refreshToken(uid: string) {
-    return this.getTokens(uid);
+  async refreshToken(uid: string, oldRefreshToken?: string) {
+    let oldJti: string | undefined;
+    if (oldRefreshToken) {
+      try {
+        const payload = this.jwtService.verify<{ jti: string }>(
+          oldRefreshToken,
+          { secret: this.configService.get<string>('JWT_REFRESH_SECRET') },
+        );
+        oldJti = payload.jti;
+      } catch {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+    }
+    return this.getTokens(uid, oldJti);
   }
 
-  /** Stateless logout — tokens are short-lived so no server-side blacklist needed.
-   *  The client discards both tokens; this endpoint exists for a clean API surface. */
-  logout() {
+  async logout(accessToken: string) {
+    try {
+      const payload = this.jwtService.verify<{ jti: string }>(accessToken, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+      });
+      await this.tokenBlacklist.blacklist(payload.jti, 15 * 60);
+    } catch {
+      // Token already expired or invalid — best-effort blacklist
+    }
     return { message: 'Logged out successfully' };
   }
 }

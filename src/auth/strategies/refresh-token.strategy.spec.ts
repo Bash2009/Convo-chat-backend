@@ -9,7 +9,10 @@ describe('RefreshTokenStrategy', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RefreshTokenStrategy,
-        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-refresh-secret') } },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn().mockReturnValue('test-refresh-secret') },
+        },
       ],
     }).compile();
 
@@ -18,11 +21,17 @@ describe('RefreshTokenStrategy', () => {
 
   describe('validate', () => {
     it('returns userId, email and refresh token', () => {
-      const req = { get: jest.fn().mockReturnValue('Bearer my-refresh-token') } as any;
+      const req = {
+        get: jest.fn().mockReturnValue('Bearer my-refresh-token'),
+      } as any;
 
       const result = strategy.validate(req, { sub: 'uid1', email: 'a@b.com' });
 
-      expect(result).toEqual({ userId: 'uid1', email: 'a@b.com', refreshToken: 'my-refresh-token' });
+      expect(result).toEqual({
+        userId: 'uid1',
+        email: 'a@b.com',
+        refreshToken: 'my-refresh-token',
+      });
     });
 
     it('returns null refresh token when header is missing', () => {
@@ -30,7 +39,11 @@ describe('RefreshTokenStrategy', () => {
 
       const result = strategy.validate(req, { sub: 'uid1' });
 
-      expect(result).toEqual({ userId: 'uid1', email: null, refreshToken: null });
+      expect(result).toEqual({
+        userId: 'uid1',
+        email: null,
+        refreshToken: null,
+      });
     });
   });
 });

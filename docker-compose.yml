@@ -8,3 +8,11 @@ services:
       POSTGRES_PASSWORD: pass1234
     volumes:
       - ./data/db:/var/lib/postgresql/data
+
+  redis:
+    image: redis:latest
+    restart: always
+    ports:
+      - '6379:6379'
+    volumes:
+        - ./data/redis:/data
