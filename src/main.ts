@@ -12,8 +12,10 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'http://localhost:5173',
-      'https://social-media-frontend-blush.vercel.app',
-      'https://social-media-frontend-bashirs-projects-4584c438.vercel.app',
+      "https://social-media-frontend-blush.vercel.app",
+      "https://convo-frontend-bashirs-projects-4584c438.vercel.app",
+      "https://convo-frontend-adxm6elu4-bashirs-projects-4584c438.vercel.app",
+      "https://convo-frontend-git-main-bashirs-projects-4584c438.vercel.app"
     ],
     methods: 'GET, HEAD, PUT, PATCH, POST, DELETE',
     credentials: true,
