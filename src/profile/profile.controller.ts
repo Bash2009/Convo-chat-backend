@@ -63,16 +63,6 @@ export class ProfileController {
     return this.profileService.update(uid, dto, avatar);
   }
 
-  @Patch('update/:profile_id')
-  @UseInterceptors(FileInterceptor('avatar'))
-  updateById(
-    @Param('profile_id') profileId: string,
-    @Body() dto: UpdateProfileDto,
-    @UploadedFile() avatar?: Express.Multer.File,
-  ) {
-    return this.profileService.updateById(profileId, dto, avatar);
-  }
-
   @Get('id/:uid')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get profile by user UID' })

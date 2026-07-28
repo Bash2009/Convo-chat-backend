@@ -126,45 +126,4 @@ export class ProfileService {
     }
     return { userExists: true, profile: profile };
   }
-
-  async findById(profileId: string) {
-    const profile = await this.profileRepository.findOne({
-      where: { id: profileId },
-    });
-    if (!profile) {
-      throw new NotFoundException('Profile not found');
-    }
-    return profile;
-  }
-
-  async updateById(
-    profileId: string,
-    dto: UpdateProfileDto,
-    avatar?: Express.Multer.File,
-  ) {
-    try {
-      const profile = await this.findById(profileId);
-
-      if (avatar) {
-        avatar.filename = `${Date.now()}-${profileId}`;
-        const upload = await this.cloudinaryService.uploadImage(avatar);
-        dto.avatarUrl = (upload as { url: string }).url;
-      }
-
-      if (dto.userName) {
-        dto['username'] = dto.userName.toLowerCase().replace(/\s+/g, '-');
-        delete dto.userName;
-      }
-
-      Object.assign(profile, dto);
-      return this.profileRepository.save(profile);
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      const driverError = (error as { driverError?: { code?: string } }).driverError;
-      if (driverError?.code === '23505') {
-        throw new ConflictException('Username already exists');
-      }
-      throw new InternalServerErrorException('Profile update failed');
-    }
-  }
 }
